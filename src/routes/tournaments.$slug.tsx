@@ -1,22 +1,27 @@
-import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowLeft, CalendarDays, Clock, MapPin, Play, Trophy } from "lucide-react";
+import { ArrowLeft, CalendarDays, Clock, MapPin, Play, RefreshCw, Trophy } from "lucide-react";
 
-import { getTournament, tournaments } from "@/data/tournaments";
+import { getTournaments } from "@/lib/tournament-data";
+import type { Tournament } from "@/data/tournaments";
 import { Bracket } from "@/components/bracket";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/tournaments/$slug")({
-  loader: ({ params }) => {
-    const tournament = getTournament(params.slug);
+  loader: async ({ params }) => {
+    const { tournaments, source, fetchedAt } = await getTournaments();
+    const tournament = tournaments.find((t) => t.slug === params.slug);
     if (!tournament) throw notFound();
-    return { tournament };
+    return { tournament, others: tournaments, source, fetchedAt };
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
       return {
-        meta: [{ title: "Tournament not found — InMobi Sports Day 2026" }, { name: "robots", content: "noindex" }],
+        meta: [
+          { title: "Tournament not found — InMobi Sports Day 2026" },
+          { name: "robots", content: "noindex" },
+        ],
       };
     }
     const t = loaderData.tournament;
@@ -38,7 +43,7 @@ const TABS = ["Details", "Matches", "Gallery", "Videos"] as const;
 type Tab = (typeof TABS)[number];
 
 function TournamentPage() {
-  const { tournament: t } = Route.useLoaderData();
+  const { tournament: t, others, fetchedAt } = Route.useLoaderData();
   const [tab, setTab] = useState<Tab>("Details");
 
   return (
@@ -120,31 +125,30 @@ function TournamentPage() {
                   Knockout bracket
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Round 1 → Round 2 → Quarter-Finals → Semi-Finals → Final
+                  Follow the arrows — every winner advances into the next round.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-5 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1.5">
-                  <span className="live-dot size-1.5 rounded-full bg-live" /> Live
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground sm:gap-5">
+                <RefreshButton fetchedAt={fetchedAt} />
+                <span className="flex items-center gap-2">
+                  <span className="h-[3px] w-6 rounded-full bg-accent" /> Winner advances
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-accent" /> Winner
+                <span className="flex items-center gap-2">
+                  <span className="live-dot h-[3px] w-6 rounded-full bg-live" /> Being played
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="size-1.5 rounded-full bg-border" /> Upcoming
+                <span className="flex items-center gap-2">
+                  <span className="h-[3px] w-6 rounded-full bg-border" /> Yet to be decided
                 </span>
               </div>
             </div>
             <div className="mt-10">
-              <Bracket rounds={t.rounds} />
+              <Bracket rounds={t.rounds} kind={t.participants} />
             </div>
           </section>
         )}
         {tab === "Gallery" && (
           <section>
-            <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">
-              Gallery
-            </h2>
+            <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Gallery</h2>
             <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {t.gallery.map((g, i) => (
                 <figure
@@ -175,9 +179,7 @@ function TournamentPage() {
         )}
         {tab === "Videos" && (
           <section>
-            <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">
-              Videos
-            </h2>
+            <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Videos</h2>
             <div className="mt-10 grid gap-8 lg:grid-cols-2">
               {t.videos.map((v, i) => (
                 <article key={i} className={cn(i === 0 && "lg:col-span-2")}>
@@ -211,13 +213,61 @@ function TournamentPage() {
         )}
       </main>
 
-      <OtherTournaments slug={t.slug} />
+      <OtherTournaments slug={t.slug} all={others} />
       <SiteFooter />
     </div>
   );
 }
 
-function Details({ t }: { t: NonNullable<ReturnType<typeof getTournament>> }) {
+/**
+ * Pulls the latest sheet data on demand. The business team edits the sheet and
+ * presses this rather than waiting out the cache or reloading the page.
+ */
+function RefreshButton({ fetchedAt }: { fetchedAt: number }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  const updated = new Date(fetchedAt).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  async function refresh() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      // Re-reads the sheet server-side, then re-runs the loader to pick it up.
+      await fetch("/api/tournaments?refresh=1", { cache: "no-store" });
+      await router.invalidate();
+    } catch {
+      // Leave the current data on screen — a failed refresh should never blank
+      // the bracket. The next attempt, or the 60s cache, will catch up.
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={refresh}
+        disabled={busy}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1",
+          "font-medium transition-colors hover:border-accent hover:text-accent",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+        )}
+      >
+        <RefreshCw className={cn("size-3", busy && "animate-spin")} />
+        {busy ? "Updating" : "Refresh"}
+      </button>
+      <span className="text-muted-foreground/70">Updated {updated}</span>
+    </span>
+  );
+}
+
+function Details({ t }: { t: Tournament }) {
   return (
     <section className="grid gap-12 lg:grid-cols-[1.4fr_1fr] lg:gap-20">
       <div>
@@ -244,7 +294,10 @@ function Details({ t }: { t: NonNullable<ReturnType<typeof getTournament>> }) {
             ["Time", t.time],
             ["Venue", `${t.venue}, ${t.venueNote}`],
           ].map(([k, v]) => (
-            <div key={k} className="flex gap-4 border-b border-border/70 pb-4 last:border-0 last:pb-0">
+            <div
+              key={k}
+              className="flex gap-4 border-b border-border/70 pb-4 last:border-0 last:pb-0"
+            >
               <dt className="w-20 shrink-0 text-muted-foreground">{k}</dt>
               <dd className="font-medium">{v}</dd>
             </div>
@@ -258,8 +311,8 @@ function Details({ t }: { t: NonNullable<ReturnType<typeof getTournament>> }) {
   );
 }
 
-function OtherTournaments({ slug }: { slug: string }) {
-  const others = tournaments.filter((t) => t.slug !== slug).slice(0, 4);
+function OtherTournaments({ slug, all }: { slug: string; all: Tournament[] }) {
+  const others = all.filter((t) => t.slug !== slug).slice(0, 4);
   return (
     <section className="border-t border-border bg-surface">
       <div className="mx-auto max-w-6xl px-5 py-14 sm:px-8">

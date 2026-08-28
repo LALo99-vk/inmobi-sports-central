@@ -2,8 +2,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight, CalendarDays, Clock, MapPin } from "lucide-react";
 
 import heroImg from "@/assets/hero.jpg";
-import { tournaments } from "@/data/tournaments";
+import { getTournaments } from "@/lib/tournament-data";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -22,6 +23,10 @@ export const Route = createFileRoute("/")({
       },
     ],
   }),
+  loader: async () => {
+    const { tournaments } = await getTournaments();
+    return { tournaments };
+  },
   component: Home,
 });
 
@@ -57,6 +62,10 @@ const schedule = [
 ];
 
 function Home() {
+  const { tournaments } = Route.useLoaderData();
+  const count = tournaments.length;
+  const venues = new Set(tournaments.map((t) => t.venue)).size;
+
   return (
     <div className="min-h-screen">
       <SiteHeader />
@@ -84,8 +93,7 @@ function Home() {
             <span className="block text-accent">2026</span>
           </h1>
           <p className="rise-in mt-6 max-w-xl text-lg text-primary-foreground/75">
-            Eight tournaments. Four teams. One month of it&rsquo;s-all-about-celebrating
-            one InMobi spirit.
+            Four teams. One month of it&rsquo;s-all-about-celebrating one InMobi spirit.
           </p>
           <div className="mt-10 flex flex-wrap items-center gap-x-10 gap-y-4 border-t border-primary-foreground/15 pt-6 text-primary-foreground/80">
             <span className="flex items-center gap-2 text-sm">
@@ -94,12 +102,14 @@ function Home() {
             </span>
             <span className="flex items-center gap-2 text-sm">
               <MapPin className="size-4 text-accent" />
-              Bengaluru · 3 venues
+              Bengaluru{venues > 0 && ` · ${venues} venue${venues === 1 ? "" : "s"}`}
             </span>
-            <span className="flex items-center gap-2 text-sm">
-              <Clock className="size-4 text-accent" />
-              8 tournaments
-            </span>
+            {count > 0 && (
+              <span className="flex items-center gap-2 text-sm">
+                <Clock className="size-4 text-accent" />
+                {count} tournament{count === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
           <Link
             to="/"
@@ -116,29 +126,39 @@ function Home() {
       <section className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-10 gap-y-3 px-5 py-5 sm:px-8">
           <span className="eyebrow text-muted-foreground">Four teams</span>
-          {["Blue Moon Mavericks", "Golden Gladiators", "Red Raiders", "Teal Titans"].map(
-            (t) => (
-              <span key={t} className="font-display text-sm font-bold tracking-tight">
-                {t}
-              </span>
-            ),
-          )}
+          {["Blue Moon Mavericks", "Golden Gladiators", "Red Raiders", "Teal Titans"].map((t) => (
+            <span key={t} className="font-display text-sm font-bold tracking-tight">
+              {t}
+            </span>
+          ))}
         </div>
       </section>
 
       {/* Tournaments */}
-      <section id="tournaments" className="mx-auto max-w-6xl scroll-mt-20 px-5 py-20 sm:px-8 sm:py-28">
+      <section
+        id="tournaments"
+        className="mx-auto max-w-6xl scroll-mt-20 px-5 py-20 sm:px-8 sm:py-28"
+      >
         <div className="max-w-2xl">
           <h2 className="rule-ember font-display text-3xl font-extrabold sm:text-4xl">
             Tournaments
           </h2>
           <p className="mt-3 text-muted-foreground">
-            Every sport runs as a straight knockout ladder — Round 1 through to the Final.
-            Pick a tournament to follow its bracket, gallery and videos.
+            Every sport runs as a straight knockout ladder — Round 1 through to the Final. Pick a
+            tournament to follow its bracket, gallery and videos.
           </p>
         </div>
 
-        <ul className="mt-12 border-t border-border">
+        {count === 0 && (
+          <div className="mt-12 border-t border-border py-20 text-center">
+            <p className="font-display text-xl font-extrabold">Tournaments are being finalised</p>
+            <p className="mx-auto mt-3 max-w-md text-muted-foreground">
+              Schedules and brackets will appear here as soon as they&rsquo;re published.
+            </p>
+          </div>
+        )}
+
+        <ul className={cn("mt-12 border-t border-border", count === 0 && "hidden")}>
           {tournaments.map((t, i) => (
             <li key={t.slug}>
               <Link

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="InMobi Sports Day">
+  <rect width="64" height="64" rx="14" fill="#1B2044"/>
+  <!-- iM wordmark in the site's ember accent -->
+  <rect x="14" y="24" width="6" height="22" rx="2" fill="#E9661F"/>
+  <circle cx="17" cy="18" r="3.6" fill="#E9661F"/>
+  <path d="M26 46V24h6l6.5 11L45 24h6v22h-6V34.5L39 44h-1.5L32 34.5V46z" fill="#E9661F"/>
+</svg>
