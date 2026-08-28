@@ -6,6 +6,7 @@ import { getTournaments } from "@/lib/tournament-data";
 import type { Tournament } from "@/data/tournaments";
 import { Bracket } from "@/components/bracket";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { SportMotif } from "@/components/sport-motif";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/tournaments/$slug")({
@@ -52,19 +53,19 @@ function TournamentPage() {
 
       {/* Masthead */}
       <section className="relative isolate overflow-hidden ink-panel">
-        <img
-          src={t.image}
-          alt={`${t.sport} at InMobi Sports Day 2026`}
-          width={1280}
-          height={960}
-          className="absolute inset-0 size-full object-cover opacity-35"
-        />
         <div
-          className="absolute inset-0"
+          className="pointer-events-none absolute inset-0"
           style={{
             background:
-              "linear-gradient(90deg, oklch(0.18 0.05 265 / 0.96) 10%, oklch(0.18 0.05 265 / 0.7) 100%)",
+              "linear-gradient(90deg, oklch(0.18 0.05 265 / 0.98) 0%, oklch(0.18 0.05 265 / 0.85) 45%, oklch(0.18 0.05 265 / 0.55) 100%)",
           }}
+        />
+        {/* Sport motif instead of stock photography — on-brand, weightless, and
+            different for every tournament. Sits above the wash so the line-work
+            stays crisp rather than being dimmed into the background. */}
+        <SportMotif
+          slug={t.slug}
+          className="pointer-events-none absolute -right-8 top-1/2 h-[165%] -translate-y-1/2 text-accent opacity-25 sm:right-0 sm:h-[180%]"
         />
         <div className="relative mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
           <Link
