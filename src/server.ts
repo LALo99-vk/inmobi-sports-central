@@ -1,5 +1,6 @@
 import "./lib/error-capture";
 
+import { fetchFileMedia, readDriveConfig } from "./lib/drive";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { loadSheetData } from "./lib/sheets";
@@ -100,6 +101,34 @@ async function handleApi(request: Request): Promise<Response | null> {
     // Served from the edge briefly, then refreshed in the background while the
     // stale copy keeps answering — viewers never wait on Google.
     return json(summarise(data), "public, max-age=0, s-maxage=10, stale-while-revalidate=60");
+  }
+
+  if (pathname.startsWith("/api/drive-image/")) {
+    const fileId = pathname.slice("/api/drive-image/".length);
+    // Drive file IDs are alphanumeric plus - and _ — reject anything else
+    // before it reaches the Drive API URL.
+    if (!/^[a-zA-Z0-9_-]+$/.test(fileId)) {
+      return json({ error: "Invalid file id" }, "no-store", 400);
+    }
+
+    const config = readDriveConfig();
+    if (!config) return json({ error: "Drive not configured" }, "no-store", 404);
+
+    try {
+      const { body, contentType } = await fetchFileMedia(config, fileId);
+      return new Response(body, {
+        status: 200,
+        headers: {
+          "content-type": contentType,
+          // File IDs are stable even when a photo is renamed, so this is safe
+          // to cache hard — a CDN can serve it without hitting Drive again.
+          "cache-control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch (error) {
+      console.error("[drive] image proxy failed:", error);
+      return json({ error: "Image not found" }, "no-store", 404);
+    }
   }
 
   if (pathname === "/api/sheet-status") {

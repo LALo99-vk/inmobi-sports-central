@@ -523,6 +523,8 @@ export type TournamentConfig = {
   format?: string;
   tagline?: string;
   about?: string;
+  /** Drive folder link or ID the gallery photos are pulled from. */
+  galleryFolder?: string;
 };
 
 const CONFIG_HEADERS: Record<string, string[]> = {
@@ -540,7 +542,29 @@ const CONFIG_HEADERS: Record<string, string[]> = {
   tagline: ["tagline", "subtitle", "strapline"],
   about: ["about", "description", "summary", "intro"],
   visible: ["visible", "published", "show", "publish"],
+  galleryFolder: [
+    "galleryfolder",
+    "gallery",
+    "photos",
+    "photosfolder",
+    "drivefolder",
+    "photodrive",
+  ],
 };
+
+/**
+ * Accepts either a bare folder ID or a full Drive URL
+ * (e.g. https://drive.google.com/drive/folders/<id>) and returns the ID.
+ */
+function extractDriveFolderId(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const match = trimmed.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (match) return match[1];
+  // A bare ID: Drive IDs are alphanumeric plus - and _, no slashes or spaces.
+  if (/^[a-zA-Z0-9_-]+$/.test(trimmed)) return trimmed;
+  return undefined;
+}
 
 function normalizeParticipants(value: string): ParticipantKind | undefined {
   const key = normalizeHeader(value);
@@ -611,6 +635,16 @@ export function parseTournamentsTab(grid: SheetGrid): {
       return value ? value : undefined;
     };
 
+    const galleryFolderRaw = read(row, "galleryFolder");
+    const galleryFolder = galleryFolderRaw ? extractDriveFolderId(galleryFolderRaw) : undefined;
+    if (galleryFolderRaw && !galleryFolder) {
+      warnings.push({
+        tab: "Tournaments",
+        row: i + 2,
+        message: `Gallery folder "${galleryFolderRaw}" isn't a Drive folder link or ID.`,
+      });
+    }
+
     configs.push({
       slug,
       // Falls back to a tab named after the sport, then the slug itself.
@@ -627,6 +661,7 @@ export function parseTournamentsTab(grid: SheetGrid): {
       ...(optional("format") ? { format: optional("format") as string } : {}),
       ...(optional("tagline") ? { tagline: optional("tagline") as string } : {}),
       ...(optional("about") ? { about: optional("about") as string } : {}),
+      ...(galleryFolder ? { galleryFolder } : {}),
     });
   });
 

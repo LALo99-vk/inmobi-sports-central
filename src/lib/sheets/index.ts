@@ -17,6 +17,7 @@ import {
   type SheetGrid,
   type TournamentConfig,
 } from "./parse";
+import { loadGallery } from "@/lib/drive";
 
 /** How long a fetched copy is served before we re-read the sheet. */
 const TTL_MS = 60_000;
@@ -103,6 +104,7 @@ export function buildFromTabs(tabs: Record<string, SheetGrid>): {
   groups: Group[] | null;
   warnings: ParseWarning[];
   fromSheet: string[];
+  configs: TournamentConfig[];
 } {
   const warnings: ParseWarning[] = [];
 
@@ -161,7 +163,32 @@ export function buildFromTabs(tabs: Record<string, SheetGrid>): {
     .map((config) => built.get(config.slug))
     .filter((t): t is Tournament => t !== undefined);
 
-  return { tournaments, groups, warnings, fromSheet };
+  return { tournaments, groups, warnings, fromSheet, configs };
+}
+
+/**
+ * Fetches live Drive photos for every tournament whose Tournaments-tab row
+ * has a gallery folder, replacing its sample gallery. Folders that fail to
+ * read (not shared, API disabled, etc.) just keep whatever gallery the
+ * tournament already had.
+ */
+async function attachGalleries(
+  tournaments: Tournament[],
+  configs: TournamentConfig[],
+): Promise<Tournament[]> {
+  const folderBySlug = new Map(
+    configs.filter((c) => c.galleryFolder).map((c) => [c.slug, c.galleryFolder as string]),
+  );
+  if (folderBySlug.size === 0) return tournaments;
+
+  return Promise.all(
+    tournaments.map(async (t) => {
+      const folderId = folderBySlug.get(t.slug);
+      if (!folderId) return t;
+      const gallery = await loadGallery(folderId);
+      return gallery.length ? { ...t, gallery } : t;
+    }),
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -196,11 +223,12 @@ async function readSheet(): Promise<SheetData> {
 
   try {
     const tabs = await fetchAllTabs(config);
-    const { tournaments, groups, warnings, fromSheet } = buildFromTabs(tabs);
+    const { tournaments, groups, warnings, fromSheet, configs } = buildFromTabs(tabs);
+    const withGalleries = await attachGalleries(tournaments, configs);
 
     // An empty result is a valid state (nothing published yet), not an error.
     const fresh: SheetData = {
-      tournaments,
+      tournaments: withGalleries,
       groups,
       warnings,
       source: "sheet",
