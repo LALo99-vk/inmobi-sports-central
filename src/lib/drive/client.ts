@@ -125,6 +125,8 @@ export type DriveFile = {
   id: string;
   name: string;
   mimeType: string;
+  /** Only present on videos, and only once Drive has finished processing. */
+  videoMediaMetadata?: { durationMillis?: string };
 };
 
 async function apiError(response: Response, config: DriveConfig): Promise<Error> {
@@ -148,11 +150,14 @@ async function apiError(response: Response, config: DriveConfig): Promise<Error>
   return new Error(`Drive API error ${response.status}: ${detail.slice(0, 200)}`);
 }
 
-/** Every image directly inside a folder (non-recursive), newest first. */
-export async function listFolderImages(
-  config: DriveConfig,
-  folderId: string,
-): Promise<DriveFile[]> {
+/**
+ * Every photo and video directly inside a folder (non-recursive), newest first.
+ *
+ * One folder holds both: the team drops everything in, and the caller sorts by
+ * mime type. Asking for two folders per sport would only be two things to
+ * forget to share.
+ */
+export async function listFolderMedia(config: DriveConfig, folderId: string): Promise<DriveFile[]> {
   const token = await getAccessToken(config);
 
   const files: DriveFile[] = [];
@@ -160,8 +165,11 @@ export async function listFolderImages(
 
   do {
     const params = new URLSearchParams({
-      q: `'${folderId.replace(/'/g, "\\'")}' in parents and mimeType contains 'image/' and trashed = false`,
-      fields: "nextPageToken, files(id, name, mimeType, createdTime)",
+      q:
+        `'${folderId.replace(/'/g, "\\'")}' in parents and ` +
+        `(mimeType contains 'image/' or mimeType contains 'video/') and trashed = false`,
+      fields:
+        "nextPageToken, files(id, name, mimeType, createdTime, videoMediaMetadata(durationMillis))",
       orderBy: "createdTime desc",
       pageSize: "200",
       supportsAllDrives: "true",

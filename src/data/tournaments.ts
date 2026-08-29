@@ -91,7 +91,7 @@ export type Tournament = {
   info: { label: string; value: string }[];
   rounds: BracketRound[];
   gallery: { src: string; caption: string }[];
-  videos: { title: string; duration: string; poster: string; meta: string }[];
+  videos: { id: string; title: string; duration: string; meta: string; shared: boolean }[];
 };
 
 const teamNames = ["Blue Moon Mavericks", "Golden Gladiators", "Red Raiders", "Teal Titans"];

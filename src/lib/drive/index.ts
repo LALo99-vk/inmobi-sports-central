@@ -1,51 +1,120 @@
 /**
- * Server-side loader for tournament gallery photos. Given a Drive folder ID,
- * returns the gallery items the tournament page renders. Never throws — if a
- * folder is unreachable the caller keeps whatever gallery it already had.
+ * Server-side loader for a tournament's Drive folder. One folder holds both the
+ * photos and the videos; this splits them by mime type so the page can show
+ * each in its own tab.
+ *
+ * Never throws — if a folder is unreachable the caller keeps whatever it had.
  */
-import { fetchFileMedia, listFolderImages, readDriveConfig, type DriveFile } from "./client";
+import { fetchFileMedia, listFolderMedia, readDriveConfig, type DriveFile } from "./client";
 
 export type GalleryItem = { src: string; caption: string };
+
+export type VideoItem = {
+  /** Drive file id — the page builds the player and poster URLs from it. */
+  id: string;
+  title: string;
+  /** "1:42", or empty while Drive is still processing the upload. */
+  duration: string;
+  meta: string;
+  /**
+   * Whether a visitor can actually watch it. Photos come through our own proxy
+   * so folder sharing is enough, but a video plays straight from Google in the
+   * visitor's browser and needs "anyone with the link".
+   */
+  shared: boolean;
+};
+
+export type FolderMedia = { gallery: GalleryItem[]; videos: VideoItem[] };
 
 /** How long a folder listing is served before we re-read it from Drive. */
 const TTL_MS = 60_000;
 
-const cache = new Map<string, { items: GalleryItem[]; fetchedAt: number }>();
-const inFlight = new Map<string, Promise<GalleryItem[]>>();
+const EMPTY: FolderMedia = { gallery: [], videos: [] };
+
+const cache = new Map<string, { media: FolderMedia; fetchedAt: number }>();
+const inFlight = new Map<string, Promise<FolderMedia>>();
 
 const stripExtension = (name: string) => name.replace(/\.[a-z0-9]+$/i, "");
 
-function toGalleryItems(files: DriveFile[]): GalleryItem[] {
-  return files.map((file) => ({
-    src: `/api/drive-image/${file.id}`,
-    caption: stripExtension(file.name),
-  }));
+/** 102000 -> "1:42". Empty when Drive hasn't reported a duration yet. */
+function formatDuration(millis: string | undefined): string {
+  const total = Number(millis);
+  if (!Number.isFinite(total) || total <= 0) return "";
+  const seconds = Math.round(total / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-async function readFolder(folderId: string): Promise<GalleryItem[]> {
+/**
+ * Drive only serves a thumbnail for a file anyone with the link can open —
+ * anything else redirects to the sign-in page. That redirect is precisely the
+ * signal that the video will not play for visitors, and it tests the same path
+ * their browser will take rather than guessing from the file's metadata.
+ */
+async function isPubliclyViewable(id: string): Promise<boolean> {
+  try {
+    const response = await fetch(`https://drive.google.com/thumbnail?id=${id}&sz=w320`, {
+      redirect: "manual",
+    });
+    return response.status === 200;
+  } catch {
+    return false;
+  }
+}
+
+function split(files: DriveFile[]): FolderMedia {
+  const gallery: GalleryItem[] = [];
+  const videos: VideoItem[] = [];
+
+  for (const file of files) {
+    const title = stripExtension(file.name);
+    if (file.mimeType.startsWith("video/")) {
+      videos.push({
+        id: file.id,
+        title,
+        duration: formatDuration(file.videoMediaMetadata?.durationMillis),
+        meta: "",
+        shared: false, // filled in below
+      });
+    } else if (file.mimeType.startsWith("image/")) {
+      // Photos are proxied through us, so the folder only ever needs sharing
+      // with the reader account. Videos are different — see the page.
+      gallery.push({ src: `/api/drive-image/${file.id}`, caption: title });
+    }
+  }
+
+  return { gallery, videos };
+}
+
+async function readFolder(folderId: string): Promise<FolderMedia> {
   const config = readDriveConfig();
-  if (!config) return cache.get(folderId)?.items ?? [];
+  if (!config) return cache.get(folderId)?.media ?? EMPTY;
 
   try {
-    const files = await listFolderImages(config, folderId);
-    const items = toGalleryItems(files);
-    cache.set(folderId, { items, fetchedAt: Date.now() });
-    return items;
+    const media = split(await listFolderMedia(config, folderId));
+    const videos = await Promise.all(
+      media.videos.map(async (video) => ({
+        ...video,
+        shared: await isPubliclyViewable(video.id),
+      })),
+    );
+    const withSharing = { ...media, videos };
+    cache.set(folderId, { media: withSharing, fetchedAt: Date.now() });
+    return withSharing;
   } catch (error) {
     console.error(`[drive] folder ${folderId} read failed:`, error);
     // Prefer the last good copy over dropping photos during the event.
-    return cache.get(folderId)?.items ?? [];
+    return cache.get(folderId)?.media ?? EMPTY;
   }
 }
 
 /** Cached per-folder read; concurrent callers for the same folder share one request. */
-export async function loadGallery(
+export async function loadFolderMedia(
   folderId: string,
   options?: { force?: boolean },
-): Promise<GalleryItem[]> {
+): Promise<FolderMedia> {
   const cached = cache.get(folderId);
   if (!options?.force && cached && Date.now() - cached.fetchedAt < TTL_MS) {
-    return cached.items;
+    return cached.media;
   }
 
   const existing = inFlight.get(folderId);

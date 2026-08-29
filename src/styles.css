@@ -190,11 +190,53 @@
   animation: card-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* The bracket's present mode is a real fullscreen element, and the browser
+   paints its own backdrop behind one — black, by default, which is what shows
+   around the edges while it animates in and out. Painting it in the page's own
+   paper colour makes both transitions read as the bracket simply growing. */
+::backdrop {
+  background-color: var(--background, oklch(0.98 0.008 85));
+}
+
+@keyframes present-in {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes present-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Where the browser gives us no fullscreen to animate — iOS Safari, webviews —
+   the overlay does its own fading, so leaving present mode is never an abrupt
+   cut back to the page. */
+@utility present-in {
+  animation: present-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@utility present-out {
+  animation: present-out 0.2s ease-in both;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .connector-flow,
   .live-dot,
   .rise-in,
-  .card-in {
+  .card-in,
+  .present-in,
+  .present-out {
     animation: none;
   }
 }

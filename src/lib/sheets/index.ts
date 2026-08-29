@@ -17,7 +17,7 @@ import {
   type SheetGrid,
   type TournamentConfig,
 } from "./parse";
-import { loadGallery } from "@/lib/drive";
+import { loadFolderMedia } from "@/lib/drive";
 
 /** How long a fetched copy is served before we re-read the sheet. */
 const TTL_MS = 60_000;
@@ -167,10 +167,9 @@ export function buildFromTabs(tabs: Record<string, SheetGrid>): {
 }
 
 /**
- * Fetches live Drive photos for every tournament whose Tournaments-tab row
- * has a gallery folder, replacing its sample gallery. Folders that fail to
- * read (not shared, API disabled, etc.) just keep whatever gallery the
- * tournament already had.
+ * Fetches the live Drive photos and videos for every tournament whose
+ * Tournaments-tab row has a gallery folder. Folders that fail to read (not
+ * shared, API disabled, etc.) just keep whatever the tournament already had.
  */
 async function attachGalleries(
   tournaments: Tournament[],
@@ -185,8 +184,12 @@ async function attachGalleries(
     tournaments.map(async (t) => {
       const folderId = folderBySlug.get(t.slug);
       if (!folderId) return t;
-      const gallery = await loadGallery(folderId);
-      return gallery.length ? { ...t, gallery } : t;
+      const { gallery, videos } = await loadFolderMedia(folderId);
+      return {
+        ...t,
+        ...(gallery.length ? { gallery } : {}),
+        ...(videos.length ? { videos } : {}),
+      };
     }),
   );
 }

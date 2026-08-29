@@ -154,7 +154,12 @@ function TournamentPage() {
               </div>
             </div>
             <div className="mt-10">
-              <Bracket rounds={t.rounds} kind={t.participants} courtLabel={t.courtLabel} />
+              <Bracket
+                rounds={t.rounds}
+                kind={t.participants}
+                courtLabel={t.courtLabel}
+                title={`${t.sport} — ${t.name}`}
+              />
             </div>
           </section>
         )}
@@ -209,31 +214,7 @@ function TournamentPage() {
             ) : (
               <div className="mt-10 grid gap-8 lg:grid-cols-2">
                 {t.videos.map((v, i) => (
-                  <article key={i} className={cn(i === 0 && "lg:col-span-2")}>
-                    <div className="group relative overflow-hidden rounded-md bg-primary">
-                      <img
-                        src={v.poster}
-                        alt={v.title}
-                        loading="lazy"
-                        width={1280}
-                        height={960}
-                        className={cn(
-                          "w-full object-cover opacity-80 transition-all duration-700 group-hover:scale-[1.02] group-hover:opacity-70",
-                          i === 0 ? "h-64 sm:h-[26rem]" : "h-56",
-                        )}
-                      />
-                      <button className="absolute inset-0 flex items-center justify-center">
-                        <span className="flex size-16 items-center justify-center rounded-full bg-accent text-accent-foreground transition-transform group-hover:scale-105">
-                          <Play className="size-6 translate-x-0.5 fill-current" />
-                        </span>
-                      </button>
-                      <span className="absolute bottom-3 right-3 rounded bg-black/65 px-2 py-0.5 text-xs font-medium tabular-nums text-white">
-                        {v.duration}
-                      </span>
-                    </div>
-                    <h3 className="mt-4 font-display text-lg font-bold">{v.title}</h3>
-                    <p className="text-sm text-muted-foreground">{v.meta}</p>
-                  </article>
+                  <VideoCard key={v.id} video={v} feature={i === 0} />
                 ))}
               </div>
             )}
@@ -292,6 +273,76 @@ function RefreshButton({ fetchedAt }: { fetchedAt: number }) {
       </button>
       <span className="text-muted-foreground/70">Updated {updated}</span>
     </span>
+  );
+}
+
+/**
+ * A Drive video.
+ *
+ * The poster is only a picture until someone presses play — then it is swapped
+ * for Drive's own player. Mounting an iframe per video up front would pull in
+ * Google's whole player for every clip on the page, so the click is what pays
+ * for it.
+ *
+ * Both the poster and the player load straight from Google in the visitor's
+ * browser, so unlike the photos these files must be shared "anyone with the
+ * link". When they are not, the thumbnail 404s and we say so plainly rather
+ * than leaving a black box.
+ */
+function VideoCard({ video, feature }: { video: Tournament["videos"][number]; feature: boolean }) {
+  const [playing, setPlaying] = useState(false);
+  const height = feature ? "h-64 sm:h-[26rem]" : "h-56";
+
+  return (
+    <article className={cn(feature && "lg:col-span-2")}>
+      <div className={cn("group relative overflow-hidden rounded-md bg-primary", height)}>
+        {playing ? (
+          <iframe
+            src={`https://drive.google.com/file/d/${video.id}/preview`}
+            title={video.title}
+            allow="autoplay; fullscreen"
+            allowFullScreen
+            className="size-full"
+          />
+        ) : !video.shared ? (
+          <div className="flex size-full flex-col items-center justify-center gap-2 px-6 text-center">
+            <Play className="size-7 text-primary-foreground/40" />
+            <p className="font-display text-sm font-bold text-primary-foreground/90">
+              This video isn&rsquo;t shared yet
+            </p>
+            <p className="text-xs text-primary-foreground/60">
+              In Drive, set it to &ldquo;Anyone with the link&rdquo; and it will play here.
+            </p>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setPlaying(true)}
+            className="size-full"
+            aria-label={`Play ${video.title}`}
+          >
+            <img
+              src={`https://drive.google.com/thumbnail?id=${video.id}&sz=w1280`}
+              alt=""
+              loading="lazy"
+              className="size-full object-cover opacity-80 transition-all duration-700 group-hover:scale-[1.02] group-hover:opacity-70"
+            />
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="flex size-16 items-center justify-center rounded-full bg-accent text-accent-foreground transition-transform group-hover:scale-105">
+                <Play className="size-6 translate-x-0.5 fill-current" />
+              </span>
+            </span>
+            {video.duration && (
+              <span className="absolute bottom-3 right-3 rounded bg-black/65 px-2 py-0.5 text-xs font-medium tabular-nums text-white">
+                {video.duration}
+              </span>
+            )}
+          </button>
+        )}
+      </div>
+      <h3 className="mt-4 font-display text-lg font-bold">{video.title}</h3>
+      {video.meta && <p className="text-sm text-muted-foreground">{video.meta}</p>}
+    </article>
   );
 }
 

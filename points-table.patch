@@ -1,0 +1,1086 @@
+--- a/src/data/tournaments.ts
++++ b/src/data/tournaments.ts
+@@ -33,6 +33,38 @@
+   if (!code) return undefined;
+   return groups.find((g) => g.code === code);
+ }
++
++/* ------------------------------------------------------------------ *
++ * Event-wide points table
++ * ------------------------------------------------------------------ */
++
++/** One sport's contribution to the overall standings. */
++export type PointsRow = {
++  /** Sport as written in the sheet, e.g. "Table Tennis". */
++  sport: string;
++  /** Set when the sport matches a tournament, so the row can link to it. */
++  slug?: string | undefined;
++  /** Points per house team, keyed by group code. null = not scored yet. */
++  points: Record<string, number | null>;
++  /** Free text the sheet can add per row, e.g. "Final pending". */
++  note?: string | undefined;
++};
++
++/** The whole standings page in one object, ready to render. */
++export type PointsTable = {
++  rows: PointsRow[];
++  /** Column sums, keyed by group code — never a hand-typed total. */
++  totals: Record<string, number>;
++  /** The four houses, in the order the Groups tab lists them. */
++  teams: Group[];
++  /** True once there are numbers to show, whether real or sample. */
++  published: boolean;
++  /**
++   * The numbers are placeholders, not real scores. Set while the sheet has no
++   * points tab; the page says so on its face.
++   */
++  sample?: boolean | undefined;
++};
+ 
+ export type BracketSlot = {
+   /**
+--- a/src/lib/sheets/index.ts
++++ b/src/lib/sheets/index.ts
+@@ -5,14 +5,20 @@
+  */
+ import {
+   tournaments as fallbackTournaments,
++  groups as fallbackGroups,
+   type Group,
++  type PointsRow,
++  type PointsTable,
+   type Tournament,
+ } from "@/data/tournaments";
+ import { fetchAllTabs, readSheetsConfig } from "./client";
+ import {
+   parseGroupsTab,
+   parseMatchTab,
++  parsePointsTab,
+   parseTournamentsTab,
++  totalPoints,
++  POINTS_TAB_NAMES,
+   type ParseWarning,
+   type SheetGrid,
+   type TournamentConfig,
+@@ -27,6 +33,8 @@
+ export type SheetData = {
+   tournaments: Tournament[];
+   groups: Group[] | null;
++  /** Event-wide standings for the points table page. */
++  points: PointsTable;
+   warnings: ParseWarning[];
+   source: SheetSource;
+   /** Slugs whose matches came from the sheet rather than the sample data. */
+@@ -37,11 +45,24 @@
+ };
+ 
+ /** Tabs that hold configuration rather than a tournament's matches. */
+-const RESERVED_TABS = new Set(["tournaments", "groups", "config", "settings", "readme"]);
++const RESERVED_TABS = new Set([
++  "tournaments",
++  "groups",
++  "config",
++  "settings",
++  "readme",
++  ...POINTS_TAB_NAMES,
++]);
+ 
+ const findTab = (tabs: Record<string, SheetGrid>, name: string) =>
+   Object.entries(tabs).find(([title]) => title.trim().toLowerCase() === name)?.[1];
+ 
++/** The standings tab, whichever of its accepted names the team used. */
++const findPointsTab = (tabs: Record<string, SheetGrid>) =>
++  Object.entries(tabs).find(([title]) =>
++    POINTS_TAB_NAMES.includes(title.trim().toLowerCase()),
++  )?.[1];
++
+ /** "Table Tennis" -> "table-tennis", matching the route slugs. */
+ const toSlug = (title: string) =>
+   title
+@@ -102,6 +123,7 @@
+ export function buildFromTabs(tabs: Record<string, SheetGrid>): {
+   tournaments: Tournament[];
+   groups: Group[] | null;
++  points: PointsTable;
+   warnings: ParseWarning[];
+   fromSheet: string[];
+   configs: TournamentConfig[];
+@@ -163,10 +185,87 @@
+     .map((config) => built.get(config.slug))
+     .filter((t): t is Tournament => t !== undefined);
+ 
+-  return { tournaments, groups, warnings, fromSheet, configs };
++  const pointsGrid = findPointsTab(tabs);
++  const teams = groups ?? fallbackGroups;
++  const parsedPoints = pointsGrid?.length
++    ? parsePointsTab(pointsGrid, teams)
++    : { rows: [], warnings: [] };
++  warnings.push(...parsedPoints.warnings);
++  const points = buildPointsTable(parsedPoints.rows, teams, configs);
++
++  return { tournaments, groups, points, warnings, fromSheet, configs };
+ }
+ 
+ /**
++ * Stand-in standings, used only while the sheet has no points tab, so the page
++ * can be shown to people before scoring starts.
++ *
++ * DELETE THIS once the Points Table tab exists — the page labels the numbers as
++ * samples, but they must not outlive the demo.
++ */
++const SAMPLE_POINTS: Record<string, number[]> = {
++  Cricket: [10, 6, 8, 4],
++  Football: [6, 10, 4, 8],
++  Badminton: [8, 4, 10, 6],
++  Chess: [4, 8, 6, 10],
++  Carrom: [10, 4, 6, 8],
++  "Table Tennis": [6, 8, 10, 4],
++  Darts: [8, 10, 4, 6],
++  Foosball: [4, 6, 8, 10],
++  "Races & Relay": [10, 8, 6, 4],
++};
++
++const sampleRows = (teams: Group[]): PointsRow[] =>
++  Object.entries(SAMPLE_POINTS).map(([sport, scores]) => ({
++    sport,
++    points: Object.fromEntries(teams.map((team, i) => [team.code, scores[i] ?? null])),
++    ...(sport === "Races & Relay" ? { note: "Finals pending" } : {}),
++  }));
++
++/**
++ * Finishes the standings: links each row to its tournament page and adds the
++ * column totals.
++ *
++ * With no points tab yet the table is still built — one blank row per published
++ * sport — so the page shows the real shape of the event rather than nothing,
++ * and fills in as the team scores it. It never invents a number.
++ */
++export function buildPointsTable(
++  rows: PointsRow[],
++  teams: Group[],
++  configs: TournamentConfig[],
++): PointsTable {
++  const key = (value: string) =>
++    value
++      .trim()
++      .toLowerCase()
++      .replace(/[^a-z0-9]/g, "");
++  const slugByName = new Map<string, string>();
++  for (const config of configs) {
++    if (!config.visible) continue;
++    slugByName.set(key(config.slug), config.slug);
++    if (config.sport) slugByName.set(key(config.sport), config.slug);
++    if (config.name) slugByName.set(key(config.name), config.slug);
++  }
++
++  // No points tab yet, so stand the page up on samples rather than a grid of
++  // dashes. Every number is labelled as a sample on the page itself.
++  const sample = rows.length === 0;
++  const linked = (sample ? sampleRows(teams) : rows).map((row) => {
++    const slug = row.slug ?? slugByName.get(key(row.sport));
++    return { ...row, ...(slug ? { slug } : {}) };
++  });
++
++  return {
++    rows: linked,
++    totals: totalPoints(linked, teams),
++    teams,
++    published: true,
++    ...(sample ? { sample: true } : {}),
++  };
++}
++
++/**
+  * Fetches the live Drive photos and videos for every tournament whose
+  * Tournaments-tab row has a gallery folder. Folders that fail to read (not
+  * shared, API disabled, etc.) just keep whatever the tournament already had.
+@@ -209,6 +308,7 @@
+ const emptyData = (error?: string): SheetData => ({
+   tournaments: [],
+   groups: null,
++  points: buildPointsTable([], fallbackGroups, []),
+   warnings: [],
+   source: "fallback",
+   fromSheet: [],
+@@ -226,13 +326,14 @@
+ 
+   try {
+     const tabs = await fetchAllTabs(config);
+-    const { tournaments, groups, warnings, fromSheet, configs } = buildFromTabs(tabs);
++    const { tournaments, groups, points, warnings, fromSheet, configs } = buildFromTabs(tabs);
+     const withGalleries = await attachGalleries(tournaments, configs);
+ 
+     // An empty result is a valid state (nothing published yet), not an error.
+     const fresh: SheetData = {
+       tournaments: withGalleries,
+       groups,
++      points,
+       warnings,
+       source: "sheet",
+       fromSheet,
+--- a/src/lib/sheets/parse.ts
++++ b/src/lib/sheets/parse.ts
+@@ -12,6 +12,7 @@
+   Group,
+   MatchStatus,
+   ParticipantKind,
++  PointsRow,
+ } from "@/data/tournaments";
+ 
+ /** A tab straight from the Sheets API: row 0 is the header. */
+@@ -815,4 +816,183 @@
+   });
+ 
+   return { configs, warnings };
++}
++
++/* ------------------------------------------------------------------ *
++ * Points tab — the event-wide standings
++ * ------------------------------------------------------------------ */
++
++/** Names the business team is likely to give the standings tab. */
++export const POINTS_TAB_NAMES = [
++  "points",
++  "point table",
++  "points table",
++  "pointstable",
++  "standings",
++  "overall points",
++  "overall",
++  "leaderboard",
++  "medal tally",
++];
++
++const POINTS_LABEL_HEADERS = [
++  "sport",
++  "sports",
++  "tournament",
++  "tournaments",
++  "event",
++  "events",
++  "game",
++  "discipline",
++  "activity",
++  "name",
++];
++
++const POINTS_NOTE_HEADERS = ["note", "notes", "status", "remark", "remarks", "comment", "comments"];
++
++/** Rows the team adds for their own arithmetic — we sum the sports ourselves. */
++const POINTS_TOTAL_LABELS = [
++  "total",
++  "totals",
++  "grandtotal",
++  "overall",
++  "overalltotal",
++  "aggregate",
++  "sum",
++];
++
++/** Cells that mean "not scored yet" rather than nought. */
++const POINTS_BLANK_CELLS = ["", "-", "tbd", "tba", "na", "pending", "yettoplay", "notplayed"];
++
++/** Turns a points cell into a number, or null when it holds nothing usable. */
++function parsePointsCell(raw: string): number | null {
++  const value = raw.trim();
++  if (!value || POINTS_BLANK_CELLS.includes(normalizeHeader(value))) return null;
++  const numeric = Number(value.replace(/,/g, ""));
++  return Number.isFinite(numeric) ? numeric : null;
++}
++
++/**
++ * Matches whatever the sheet wrote for a house — the code, the full name, or
++ * something like "Red Raiders (RR)" — back to its group code.
++ */
++function buildGroupLookup(groups: Group[]) {
++  const byKey = new Map<string, string>();
++  for (const group of groups) {
++    byKey.set(normalizeHeader(group.code), group.code);
++    byKey.set(normalizeHeader(group.name), group.code);
++  }
++
++  return (value: string): string | undefined => {
++    const key = normalizeHeader(value ?? "");
++    if (!key) return undefined;
++    const exact = byKey.get(key);
++    if (exact) return exact;
++    // Longer labels only: two-letter codes like "TT" would match half the sheet.
++    for (const [candidate, code] of byKey) {
++      if (candidate.length >= 4 && key.includes(candidate)) return code;
++    }
++    return undefined;
++  };
++}
++
++function transpose(grid: SheetGrid): SheetGrid {
++  const width = grid.reduce((max, row) => Math.max(max, row.length), 0);
++  return Array.from({ length: width }, (_, column) => grid.map((row) => row[column] ?? ""));
++}
++
++/**
++ * Reads the standings tab into one row per sport.
++ *
++ * Both natural layouts work: houses across the top with a row per sport, or
++ * houses down the side with a column per sport. Whichever axis carries the
++ * house names is treated as the header, so the team can write it either way.
++ */
++export function parsePointsTab(
++  grid: SheetGrid,
++  groups: Group[],
++  tab = "Points Table",
++): { rows: PointsRow[]; warnings: ParseWarning[] } {
++  const warnings: ParseWarning[] = [];
++  if (!grid.length) return { rows: [], warnings };
++
++  const resolveGroup = buildGroupLookup(groups);
++  const headerHits = (grid[0] ?? []).filter((value) => resolveGroup(value ?? "")).length;
++  const columnHits = grid.slice(1).filter((row) => resolveGroup(row[0] ?? "")).length;
++  const oriented = headerHits < 2 && columnHits >= 2 ? transpose(grid) : grid;
++
++  const header = oriented[0] ?? [];
++  const teamColumns: { index: number; code: string }[] = [];
++  header.forEach((raw, index) => {
++    const code = resolveGroup(raw ?? "");
++    if (code && !teamColumns.some((column) => column.code === code)) {
++      teamColumns.push({ index, code });
++    }
++  });
++
++  if (teamColumns.length < 2) {
++    warnings.push({
++      tab,
++      row: 1,
++      message:
++        `Couldn't find the teams. Put the sport in the first column and one column ` +
++        `per team (${groups.map((group) => group.code).join(", ")}) beside it.`,
++    });
++    return { rows: [], warnings };
++  }
++
++  const taken = new Set(teamColumns.map((column) => column.index));
++  // The sport label is whichever spare column is headed "Sport" (or similar);
++  // failing that, the first column the teams didn't claim.
++  const namedLabel = header.findIndex(
++    (raw, i) => !taken.has(i) && POINTS_LABEL_HEADERS.includes(normalizeHeader(raw ?? "")),
++  );
++  const firstFree = header.findIndex((_, i) => !taken.has(i));
++  const sportColumn = namedLabel !== -1 ? namedLabel : firstFree !== -1 ? firstFree : 0;
++  const noteColumn = header.findIndex(
++    (raw, i) =>
++      !taken.has(i) &&
++      i !== sportColumn &&
++      POINTS_NOTE_HEADERS.includes(normalizeHeader(raw ?? "")),
++  );
++
++  const rows: PointsRow[] = [];
++  oriented.slice(1).forEach((row, i) => {
++    const sport = (row[sportColumn] ?? "").trim();
++    if (!sport) return;
++    // Their own total row: we add the sports up ourselves, so skip it rather
++    // than counting the same points twice.
++    if (POINTS_TOTAL_LABELS.includes(normalizeHeader(sport))) return;
++
++    const points: Record<string, number | null> = {};
++    for (const column of teamColumns) {
++      const raw = (row[column.index] ?? "").trim();
++      const value = parsePointsCell(raw);
++      if (raw && value === null && !POINTS_BLANK_CELLS.includes(normalizeHeader(raw))) {
++        warnings.push({
++          tab,
++          row: i + 2,
++          message: `${sport}: "${raw}" isn't a number, so ${column.code} scored nothing for it.`,
++        });
++      }
++      points[column.code] = value;
++    }
++
++    const note = noteColumn === -1 ? "" : (row[noteColumn] ?? "").trim();
++    rows.push({ sport, points, ...(note ? { note } : {}) });
++  });
++
++  return { rows, warnings };
+ }
++
++/** Column sums, so the page never has to trust a hand-typed total. */
++export function totalPoints(rows: PointsRow[], groups: Group[]): Record<string, number> {
++  const totals: Record<string, number> = {};
++  for (const group of groups) totals[group.code] = 0;
++  for (const row of rows) {
++    for (const [code, value] of Object.entries(row.points)) {
++      if (typeof value === "number") totals[code] = (totals[code] ?? 0) + value;
++    }
++  }
++  return totals;
++}
+diff --git a/docs/points-table-sheet.md b/docs/points-table-sheet.md
+new file mode 100644
+index 0000000..c87b445
+--- /dev/null
++++ b/docs/points-table-sheet.md
+@@ -0,0 +1,59 @@
++# Points Table — how to fill the sheet
++
++The overall standings at `/points-table` are read from one tab in the same
++Google Sheet the tournaments come from. Nothing else needs changing: add the
++tab, put numbers in it, and the page updates within a minute.
++
++## Naming the tab
++
++Call the tab any one of:
++
++`Points` · `Points Table` · `Point Table` · `Standings` · `Overall Points` ·
++`Overall` · `Leaderboard` · `Medal Tally`
++
++## Layout
++
++One row per sport, one column per team. The first column is the sport.
++
++| Sport        | BMM | GG | RR | TT | Notes         |
++| ------------ | --- | -- | -- | -- | ------------- |
++| Cricket      | 10  | 6  | 4  | 8  |               |
++| Football     | 6   | 10 | 8  | 4  |               |
++| Table Tennis |     |    |    |    | Final pending |
++| Carrom       | 4   | 8  | 10 | 6  |               |
++
++Rules the parser follows:
++
++- **Team columns** can be headed with the code (`RR`), the full name
++  (`Red Raiders`) or both (`Red Raiders (RR)`). They may be in any order.
++- **Blank, `-`, `TBD`, `NA` or `Pending`** means "not scored yet" and shows as
++  a dash on the site. It is *not* counted as zero.
++- **Totals are calculated by the site**, down each column. If you keep your own
++  `Total` row it is ignored rather than double-counted, so it can stay.
++- **Extra rows are fine.** A `Bonus` or `Spirit Award` row is just another row
++  and adds into the totals like any sport.
++- **A `Notes` / `Status` / `Remarks` column** is shown as small grey text under
++  the sport name. Any other columns you keep for your own working are ignored.
++- **Sport names that match a tournament** (its slug, sport or name in the
++  `Tournaments` tab) become links to that tournament's page.
++
++### The sideways layout also works
++
++If it is easier to write teams down the side and sports across the top, do
++that instead — the parser detects which axis holds the team names:
++
++| Team | Cricket | Football | Carrom |
++| ---- | ------- | -------- | ------ |
++| BMM  | 10      | 6        | 4      |
++| GG   | 6       | 10       | 8      |
++
++## Before the sheet is ready
++
++With no points tab in the sheet, the page still renders: the four teams sit at
++a dash, and every published tournament gets a blank row. The site never invents
++a score.
++
++## Checking it
++
++`/api/sheet-status` lists every row the parser could not understand, e.g. a
++points cell holding text instead of a number.
+diff --git a/src/components/site-chrome.tsx b/src/components/site-chrome.tsx
+index 829627c..46b007c 100644
+--- a/src/components/site-chrome.tsx
++++ b/src/components/site-chrome.tsx
+@@ -9,7 +9,7 @@ export function SiteHeader() {
+           <span className="h-4 w-px bg-border" />
+           <span className="eyebrow text-muted-foreground">Sports Day 2026</span>
+         </Link>
+-        <nav className="flex items-center gap-6">
++        <nav className="flex items-center gap-5 sm:gap-6">
+           <Link
+             to="/"
+             hash="tournaments"
+@@ -17,6 +17,13 @@ export function SiteHeader() {
+           >
+             Tournaments
+           </Link>
++          <Link
++            to="/points-table"
++            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
++            activeProps={{ className: "text-foreground" }}
++          >
++            Points Table
++          </Link>
+           <Link
+             to="/"
+             hash="schedule"
+diff --git a/src/data/team-logos.ts b/src/data/team-logos.ts
+new file mode 100644
+index 0000000..88f71ee
+--- /dev/null
++++ b/src/data/team-logos.ts
+@@ -0,0 +1,30 @@
++import gladiatorsLogo from "@/assets/teams/team-gladiators.png";
++import mavericksLogo from "@/assets/teams/team-mavericks.png";
++import raidersLogo from "@/assets/teams/team-raiders.png";
++import titansLogo from "@/assets/teams/team-titans.png";
++
++/**
++ * The four house crests, keyed by the codes the Groups tab uses. The names are
++ * matched too, so a house that gets a new code in the sheet still finds its
++ * crest instead of rendering a gap.
++ */
++const BY_CODE: Record<string, string> = {
++  BMM: mavericksLogo,
++  GG: gladiatorsLogo,
++  RR: raidersLogo,
++  TT: titansLogo,
++};
++
++const BY_KEYWORD: [string, string][] = [
++  ["maverick", mavericksLogo],
++  ["gladiator", gladiatorsLogo],
++  ["raider", raidersLogo],
++  ["titan", titansLogo],
++];
++
++export function teamLogo(team: { code?: string; name?: string }): string | undefined {
++  const code = team.code?.trim().toUpperCase();
++  if (code && BY_CODE[code]) return BY_CODE[code];
++  const name = (team.name ?? "").toLowerCase();
++  return BY_KEYWORD.find(([keyword]) => name.includes(keyword))?.[1];
++}
+diff --git a/src/lib/tournament-data.ts b/src/lib/tournament-data.ts
+index ee3061a..4b3fd7c 100644
+--- a/src/lib/tournament-data.ts
++++ b/src/lib/tournament-data.ts
+@@ -18,6 +18,18 @@ export const getTournaments = createServerFn({ method: "GET" }).handler(async ()
+   };
+ });
+ 
++/**
++ * The event-wide standings: every sport's points for all four house teams.
++ */
++export const getPointsTable = createServerFn({ method: "GET" }).handler(async () => {
++  const data = await loadSheetData();
++  return {
++    points: data.points,
++    source: data.source,
++    fetchedAt: data.fetchedAt,
++  };
++});
++
+ /**
+  * Diagnostics for the business team: what the sheet looked like on the last
+  * read and every row the parser couldn't understand.
+diff --git a/src/routes/index.tsx b/src/routes/index.tsx
+index 4cec4b6..f966340 100644
+--- a/src/routes/index.tsx
++++ b/src/routes/index.tsx
+@@ -2,10 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
+ import { ArrowUpRight, CalendarDays, Clock, MapPin } from "lucide-react";
+ 
+ import heroImg from "@/assets/hero.jpg";
+-import mavericksLogo from "@/assets/teams/team-mavericks.png";
+-import gladiatorsLogo from "@/assets/teams/team-gladiators.png";
+-import raidersLogo from "@/assets/teams/team-raiders.png";
+-import titansLogo from "@/assets/teams/team-titans.png";
++import { groups } from "@/data/tournaments";
++import { teamLogo } from "@/data/team-logos";
+ import { getTournaments } from "@/lib/tournament-data";
+ import { useAutoRefresh } from "@/hooks/use-auto-refresh";
+ import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+@@ -131,17 +129,19 @@ function Home() {
+       <section className="border-b border-border bg-surface">
+         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-10 gap-y-4 px-5 py-5 sm:px-8">
+           <span className="eyebrow text-muted-foreground">Four teams</span>
+-          {[
+-            { name: "Blue Moon Mavericks", logo: mavericksLogo },
+-            { name: "Golden Gladiators", logo: gladiatorsLogo },
+-            { name: "Red Raiders", logo: raidersLogo },
+-            { name: "Teal Titans", logo: titansLogo },
+-          ].map((t) => (
+-            <span key={t.name} className="flex items-center gap-3">
+-              <img src={t.logo} alt="" className="h-14 w-14 object-contain object-center" />
+-              <span className="font-display text-sm font-bold tracking-tight">{t.name}</span>
++          {groups.map((team) => (
++            <span key={team.code} className="flex items-center gap-3">
++              <img src={teamLogo(team)} alt="" className="h-14 w-14 object-contain object-center" />
++              <span className="font-display text-sm font-bold tracking-tight">{team.name}</span>
+             </span>
+           ))}
++          <Link
++            to="/points-table"
++            className="ml-auto inline-flex items-center gap-1.5 border-b-2 border-accent pb-0.5 font-display text-sm font-bold uppercase tracking-[0.14em] transition-colors hover:text-accent"
++          >
++            Points table
++            <ArrowUpRight className="size-4" />
++          </Link>
+         </div>
+       </section>
+ 
+diff --git a/src/routes/points-table.tsx b/src/routes/points-table.tsx
+new file mode 100644
+index 0000000..937f891
+--- /dev/null
++++ b/src/routes/points-table.tsx
+@@ -0,0 +1,457 @@
++import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
++import { useState } from "react";
++import { ArrowLeft, RefreshCw, Trophy } from "lucide-react";
++
++import type { Group, PointsRow, PointsTable } from "@/data/tournaments";
++import { teamLogo } from "@/data/team-logos";
++import { getPointsTable } from "@/lib/tournament-data";
++import { useAutoRefresh } from "@/hooks/use-auto-refresh";
++import { SiteFooter, SiteHeader } from "@/components/site-chrome";
++import { cn } from "@/lib/utils";
++
++export const Route = createFileRoute("/points-table")({
++  loader: async () => {
++    const { points, fetchedAt } = await getPointsTable();
++    return { points, fetchedAt };
++  },
++  head: () => ({
++    meta: [
++      { title: "Points Table — InMobi Sports Day 2026" },
++      {
++        name: "description",
++        content:
++          "The overall standings for InMobi Sports Day 2026: every point scored by all four teams, across every sport.",
++      },
++      { property: "og:title", content: "Points Table — InMobi Sports Day 2026" },
++      {
++        property: "og:description",
++        content: "Live overall standings across every tournament of InMobi Sports Day 2026.",
++      },
++    ],
++  }),
++  component: PointsTablePage,
++});
++
++type Standing = {
++  team: Group;
++  total: number;
++  /** Sports this team has been scored in — the rest are still to come. */
++  scored: number;
++  /** Shared by teams on equal points, as a league table should. */
++  rank: number;
++};
++
++function buildStandings(table: PointsTable): Standing[] {
++  const ordered = table.teams
++    .map((team) => ({
++      team,
++      total: table.totals[team.code] ?? 0,
++      scored: table.rows.filter((row) => typeof row.points[team.code] === "number").length,
++    }))
++    .sort((a, b) => b.total - a.total || a.team.name.localeCompare(b.team.name));
++
++  let rank = 0;
++  let previous: number | null = null;
++  return ordered.map((entry, index) => {
++    if (previous === null || entry.total !== previous) rank = index + 1;
++    previous = entry.total;
++    return { ...entry, rank };
++  });
++}
++
++/** Codes tied at the top of a sport's row, so the leader can be marked. */
++function leadersOf(row: PointsRow): Set<string> {
++  const scored = Object.entries(row.points).filter(
++    (entry): entry is [string, number] => typeof entry[1] === "number",
++  );
++  const best = Math.max(...scored.map(([, value]) => value), 0);
++  if (!scored.length || best <= 0) return new Set();
++  return new Set(scored.filter(([, value]) => value === best).map(([code]) => code));
++}
++
++function PointsTablePage() {
++  const { points, fetchedAt } = Route.useLoaderData();
++  useAutoRefresh(60_000);
++
++  const standings = buildStandings(points);
++  const leader = standings[0];
++  const leaderPoints = leader?.total ?? 0;
++  const scoredSports = points.rows.filter((row) =>
++    Object.values(row.points).some((value) => typeof value === "number"),
++  ).length;
++
++  return (
++    <div className="min-h-screen">
++      <SiteHeader />
++
++      {/* Masthead */}
++      <section className="relative isolate overflow-hidden ink-panel">
++        <Trophy
++          className="pointer-events-none absolute -right-10 top-1/2 size-[26rem] -translate-y-1/2 text-accent opacity-15 sm:right-0"
++          strokeWidth={0.6}
++          aria-hidden
++        />
++        <div className="relative mx-auto max-w-6xl px-5 py-14 sm:px-8 sm:py-20">
++          <Link
++            to="/"
++            className="inline-flex items-center gap-2 text-sm text-primary-foreground/70 transition-colors hover:text-accent"
++          >
++            <ArrowLeft className="size-4" /> Back to the event
++          </Link>
++          <p className="eyebrow mt-8 text-accent">Overall standings</p>
++          <h1 className="mt-3 font-display text-4xl font-extrabold text-primary-foreground sm:text-6xl">
++            Points Table
++          </h1>
++          <p className="mt-5 max-w-xl text-lg text-primary-foreground/75">
++            Every point, from every sport, added up. One table for the whole of Sports Day 2026.
++          </p>
++          <div className="mt-10 flex flex-wrap items-center gap-x-10 gap-y-3 border-t border-primary-foreground/15 pt-6 text-sm text-primary-foreground/80">
++            <span>
++              <span className="font-display text-xl font-extrabold text-primary-foreground">
++                {points.teams.length}
++              </span>{" "}
++              teams
++            </span>
++            <span>
++              <span className="font-display text-xl font-extrabold text-primary-foreground">
++                {points.rows.length}
++              </span>{" "}
++              sports
++            </span>
++            <span>
++              <span className="font-display text-xl font-extrabold text-primary-foreground">
++                {scoredSports}
++              </span>{" "}
++              scored so far
++            </span>
++          </div>
++        </div>
++      </section>
++
++      <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-20">
++        {points.sample && (
++          <p className="mb-12 border-l-2 border-accent bg-secondary/60 px-5 py-4 text-sm text-muted-foreground">
++            <span className="font-semibold text-foreground">Sample numbers.</span> Scoring
++            hasn&rsquo;t started yet — these are placeholders to show the layout, and the real
++            points replace them automatically once the sheet is filled in.
++          </p>
++        )}
++
++        {/* Leaderboard */}
++        <section>
++          <div className="flex flex-wrap items-end justify-between gap-4">
++            <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">
++              The standings
++            </h2>
++            <LastUpdated fetchedAt={fetchedAt} />
++          </div>
++
++          <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
++            {standings.map((entry) => (
++              <TeamCard
++                key={entry.team.code}
++                entry={entry}
++                leaderPoints={leaderPoints}
++                published={points.published}
++              />
++            ))}
++          </div>
++
++          <StandingsTable
++            standings={standings}
++            leaderPoints={leaderPoints}
++            published={points.published}
++            sports={points.rows.length}
++          />
++        </section>
++
++        {/* Sport by sport */}
++        <section className="mt-20 sm:mt-24">
++          <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">
++            Sport by sport
++          </h2>
++
++          {points.rows.length === 0 ? (
++            <div className="mt-10 border-t border-border py-20 text-center">
++              <p className="font-display text-xl font-extrabold">No sports published yet</p>
++              <p className="mx-auto mt-3 max-w-md text-muted-foreground">
++                Once tournaments go live, each one gets a row here.
++              </p>
++            </div>
++          ) : (
++            <BreakdownTable table={points} />
++          )}
++        </section>
++      </div>
++
++      <SiteFooter />
++    </div>
++  );
++}
++
++/* ------------------------------------------------------------------ *
++ * Leaderboard
++ * ------------------------------------------------------------------ */
++
++function TeamCard({
++  entry,
++  leaderPoints,
++  published,
++}: {
++  entry: Standing;
++  leaderPoints: number;
++  published: boolean;
++}) {
++  const logo = teamLogo(entry.team);
++  const isLeader = published && entry.rank === 1 && leaderPoints > 0;
++  const behind = leaderPoints - entry.total;
++
++  return (
++    <article
++      className={cn(
++        "relative flex flex-col border border-border bg-card p-6 transition-colors",
++        isLeader && "border-accent/60 bg-secondary/40",
++      )}
++    >
++      <span
++        className="absolute inset-x-0 top-0 h-1"
++        style={{ backgroundColor: entry.team.color }}
++        aria-hidden
++      />
++      <div className="flex items-start justify-between gap-3">
++        <span className="font-display text-sm font-bold tabular-nums text-muted-foreground/70">
++          {published ? `#${entry.rank}` : "—"}
++        </span>
++        {isLeader && <span className="eyebrow text-[0.62rem] text-accent">Leading</span>}
++      </div>
++
++      {logo && (
++        <img
++          src={logo}
++          alt=""
++          className="mt-4 h-16 w-16 object-contain object-left"
++          width={64}
++          height={64}
++        />
++      )}
++      <h3 className="mt-4 font-display text-lg font-extrabold leading-tight">{entry.team.name}</h3>
++      <p className="text-sm text-muted-foreground">{entry.team.code}</p>
++
++      <p className="mt-6 font-display text-4xl font-extrabold tabular-nums">
++        {published ? entry.total.toLocaleString() : "—"}
++      </p>
++      <p className="text-xs uppercase tracking-wider text-muted-foreground">
++        {published
++          ? entry.rank === 1
++            ? `points · ${entry.scored} sport${entry.scored === 1 ? "" : "s"} scored`
++            : `points · ${behind.toLocaleString()} behind`
++          : "points"}
++      </p>
++    </article>
++  );
++}
++
++function StandingsTable({
++  standings,
++  leaderPoints,
++  published,
++  sports,
++}: {
++  standings: Standing[];
++  leaderPoints: number;
++  published: boolean;
++  sports: number;
++}) {
++  return (
++    <table className="mt-12 w-full border-collapse text-sm">
++      <thead>
++        <tr className="border-y border-border text-left">
++          <th className="w-12 py-3 pr-3 font-medium text-muted-foreground">#</th>
++          <th className="py-3 pr-4 font-medium text-muted-foreground">Team</th>
++          <th className="hidden py-3 pr-4 text-right font-medium text-muted-foreground sm:table-cell">
++            Sports scored
++          </th>
++          <th className="hidden py-3 pr-6 font-medium text-muted-foreground md:table-cell">
++            Share of points
++          </th>
++          <th className="py-3 text-right font-medium text-muted-foreground">Points</th>
++        </tr>
++      </thead>
++      <tbody>
++        {standings.map((entry) => {
++          const share = leaderPoints > 0 ? (entry.total / leaderPoints) * 100 : 0;
++          return (
++            <tr key={entry.team.code} className="border-b border-border">
++              <td className="py-4 pr-3 font-display font-bold tabular-nums text-muted-foreground/70">
++                {published ? entry.rank : "—"}
++              </td>
++              <td className="py-4 pr-4">
++                <span className="flex items-center gap-3">
++                  <span
++                    className="h-8 w-1 shrink-0"
++                    style={{ backgroundColor: entry.team.color }}
++                    aria-hidden
++                  />
++                  <span className="min-w-0">
++                    <span className="block truncate font-display text-base font-bold">
++                      {entry.team.name}
++                    </span>
++                    <span className="block text-xs text-muted-foreground sm:hidden">
++                      {entry.scored} of {sports} sports scored
++                    </span>
++                  </span>
++                </span>
++              </td>
++              <td className="hidden py-4 pr-4 text-right tabular-nums text-muted-foreground sm:table-cell">
++                {entry.scored} / {sports}
++              </td>
++              <td className="hidden py-4 pr-6 md:table-cell">
++                <span className="block h-2 w-full bg-secondary">
++                  <span
++                    className="block h-2 transition-[width] duration-500"
++                    style={{ width: `${share}%`, backgroundColor: entry.team.color }}
++                  />
++                </span>
++              </td>
++              <td className="py-4 text-right font-display text-lg font-extrabold tabular-nums">
++                {published ? entry.total.toLocaleString() : "—"}
++              </td>
++            </tr>
++          );
++        })}
++      </tbody>
++    </table>
++  );
++}
++
++/* ------------------------------------------------------------------ *
++ * Sport-by-sport breakdown
++ * ------------------------------------------------------------------ */
++
++function BreakdownTable({ table }: { table: PointsTable }) {
++  return (
++    <div className="mt-10 -mx-5 overflow-x-auto px-5 sm:mx-0 sm:px-0">
++      <table className="w-full min-w-[38rem] border-collapse text-sm">
++        <thead>
++          <tr className="border-y border-border">
++            <th className="py-3 pr-4 text-left font-medium text-muted-foreground">Sport</th>
++            {table.teams.map((team) => (
++              <th key={team.code} className="py-3 pl-4 text-right font-medium">
++                <span className="flex items-center justify-end gap-2">
++                  <span
++                    className="size-2 shrink-0 rounded-full"
++                    style={{ backgroundColor: team.color }}
++                    aria-hidden
++                  />
++                  <span className="hidden lg:inline">{team.name}</span>
++                  <span className="lg:hidden">{team.code}</span>
++                </span>
++              </th>
++            ))}
++          </tr>
++        </thead>
++        <tbody>
++          {table.rows.map((row) => {
++            const leaders = leadersOf(row);
++            return (
++              <tr key={row.sport} className="border-b border-border hover:bg-secondary/50">
++                <td className="py-4 pr-4">
++                  {row.slug ? (
++                    <Link
++                      to="/tournaments/$slug"
++                      params={{ slug: row.slug }}
++                      className="font-display text-base font-bold transition-colors hover:text-accent"
++                    >
++                      {row.sport}
++                    </Link>
++                  ) : (
++                    <span className="font-display text-base font-bold">{row.sport}</span>
++                  )}
++                  {row.note && (
++                    <span className="block text-xs text-muted-foreground">{row.note}</span>
++                  )}
++                </td>
++                {table.teams.map((team) => {
++                  const value = row.points[team.code];
++                  return (
++                    <td
++                      key={team.code}
++                      className={cn(
++                        "py-4 pl-4 text-right tabular-nums",
++                        typeof value !== "number" && "text-muted-foreground/50",
++                        leaders.has(team.code) && "font-display font-extrabold text-foreground",
++                      )}
++                    >
++                      {typeof value === "number" ? value.toLocaleString() : "—"}
++                    </td>
++                  );
++                })}
++              </tr>
++            );
++          })}
++        </tbody>
++        <tfoot>
++          <tr className="border-b-2 border-foreground/80">
++            <td className="py-4 pr-4 font-display text-base font-extrabold">Total</td>
++            {table.teams.map((team) => (
++              <td
++                key={team.code}
++                className="py-4 pl-4 text-right font-display text-lg font-extrabold tabular-nums"
++              >
++                {table.published ? (table.totals[team.code] ?? 0).toLocaleString() : "—"}
++              </td>
++            ))}
++          </tr>
++        </tfoot>
++      </table>
++    </div>
++  );
++}
++
++/* ------------------------------------------------------------------ *
++ * Freshness
++ * ------------------------------------------------------------------ */
++
++function LastUpdated({ fetchedAt }: { fetchedAt: number }) {
++  const router = useRouter();
++  const [busy, setBusy] = useState(false);
++
++  const updated = new Date(fetchedAt).toLocaleTimeString([], {
++    hour: "2-digit",
++    minute: "2-digit",
++  });
++
++  async function refresh() {
++    if (busy) return;
++    setBusy(true);
++    try {
++      // Re-reads the sheet server-side, then re-runs the loader to pick it up.
++      await fetch("/api/tournaments?refresh=1", { cache: "no-store" });
++      await router.invalidate();
++    } catch {
++      // Leave the current table on screen — a failed refresh should never blank
++      // the standings. The next attempt, or the 60s cache, will catch up.
++    } finally {
++      setBusy(false);
++    }
++  }
++
++  return (
++    <span className="flex items-center gap-2 text-xs">
++      <button
++        type="button"
++        onClick={refresh}
++        disabled={busy}
++        className={cn(
++          "inline-flex items-center gap-1.5 rounded border border-border px-2.5 py-1",
++          "font-medium transition-colors hover:border-accent hover:text-accent",
++          "disabled:cursor-not-allowed disabled:opacity-60",
++        )}
++      >
++        <RefreshCw className={cn("size-3", busy && "animate-spin")} />
++        {busy ? "Updating" : "Refresh"}
++      </button>
++      <span className="text-muted-foreground/70">Updated {updated}</span>
++    </span>
++  );
++}
+diff --git a/src/server.ts b/src/server.ts
+index ae5b924..f1ab1ac 100644
+--- a/src/server.ts
++++ b/src/server.ts
+@@ -53,6 +53,7 @@ let lastForcedRefresh = 0;
+ const summarise = (data: Awaited<ReturnType<typeof loadSheetData>>) => ({
+   tournaments: data.tournaments,
+   groups: data.groups,
++  points: data.points,
+   source: data.source,
+   fromSheet: data.fromSheet,
+   fetchedAt: data.fetchedAt,
