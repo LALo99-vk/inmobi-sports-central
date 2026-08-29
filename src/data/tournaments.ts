@@ -92,10 +92,6 @@ const teamNames = ["Blue Moon Mavericks", "Golden Gladiators", "Red Raiders", "T
 
 const images = [cricketImg, footballImg, badmintonImg, indoorImg, raceImg, ttImg];
 
-function gallery(pick: string[], captions: string[]) {
-  return pick.map((src, i) => ({ src, caption: captions[i % captions.length] ?? "" }));
-}
-
 /* ------------------------------------------------------------------ *
  * Mock bracket generation
  * ------------------------------------------------------------------ */
@@ -390,37 +386,8 @@ export const tournaments: Tournament[] = [
       times: OUTDOOR_TIMES,
       courtLabel: "Ground",
     }),
-    gallery: gallery(
-      [cricketImg, footballImg, raceImg, cricketImg, ttImg, indoorImg],
-      [
-        "Openers walking out at Sports Square",
-        "Warm-ups before the first innings",
-        "Sprint between the wickets",
-        "Squad huddle at the toss",
-        "Between-innings break",
-        "Support crew on the sidelines",
-      ],
-    ),
-    videos: [
-      {
-        title: "Quarter-Final 2 · Full highlights",
-        duration: "8:42",
-        poster: cricketImg,
-        meta: "Golden Gladiators vs Red Raiders",
-      },
-      {
-        title: "Six of the tournament",
-        duration: "0:38",
-        poster: footballImg,
-        meta: "Round 2 · Bid Blazers",
-      },
-      {
-        title: "Captains speak",
-        duration: "4:10",
-        poster: raceImg,
-        meta: "Pre-final press huddle",
-      },
-    ],
+    gallery: [],
+    videos: [],
   },
   {
     slug: "football",
@@ -453,24 +420,8 @@ export const tournaments: Tournament[] = [
       times: OUTDOOR_TIMES,
       courtLabel: "Pitch",
     }),
-    gallery: gallery(
-      [footballImg, raceImg, cricketImg, footballImg],
-      ["Evening kick-off", "Counter-attack", "Sideline tactics", "Full-time whistle"],
-    ),
-    videos: [
-      {
-        title: "Round 2 · Best goals",
-        duration: "3:05",
-        poster: footballImg,
-        meta: "12 goals, 6 matches",
-      },
-      {
-        title: "Golden goal in the QF",
-        duration: "1:12",
-        poster: raceImg,
-        meta: "Turf Tigers vs Net Ninjas",
-      },
-    ],
+    gallery: [],
+    videos: [],
   },
   {
     slug: "badminton",
@@ -502,26 +453,8 @@ export const tournaments: Tournament[] = [
       days: ["21 Sep", "22 Sep", "23 Sep", "24 Sep", "25 Sep"],
       times: NIGHT_TIMES,
     }),
-    gallery: gallery(
-      [badmintonImg, ttImg, indoorImg, badmintonImg, raceImg, footballImg],
-      [
-        "Opening smash",
-        "Between games",
-        "Courtside crowd",
-        "Deciding rally",
-        "Warm-up drills",
-        "Post-match handshake",
-      ],
-    ),
-    videos: [
-      {
-        title: "Semi-Final 1 · Extended rally",
-        duration: "2:24",
-        poster: badmintonImg,
-        meta: "42-shot rally, game point",
-      },
-      { title: "Night 3 recap", duration: "5:50", poster: ttImg, meta: "All Round 2 results" },
-    ],
+    gallery: [],
+    videos: [],
   },
   {
     slug: "table-tennis",
@@ -554,18 +487,8 @@ export const tournaments: Tournament[] = [
       times: EVENING_TIMES,
       courtLabel: "Table",
     }),
-    gallery: gallery(
-      [ttImg, indoorImg, badmintonImg, ttImg],
-      ["Rally at table one", "Crowd at the final", "Serve, match point", "Trophy handover"],
-    ),
-    videos: [
-      {
-        title: "Final · Full match",
-        duration: "18:05",
-        poster: ttImg,
-        meta: "Dev P. vs Aayansh R.",
-      },
-    ],
+    gallery: [],
+    videos: [],
   },
   {
     slug: "chess",
@@ -598,18 +521,8 @@ export const tournaments: Tournament[] = [
       times: EVENING_TIMES,
       courtLabel: "Board",
     }),
-    gallery: gallery(
-      [indoorImg, ttImg, cricketImg, indoorImg],
-      ["Board one, round two", "Clock pressure", "Analysis after play", "Quiet concentration"],
-    ),
-    videos: [
-      {
-        title: "Round 2 · Board one recap",
-        duration: "6:30",
-        poster: indoorImg,
-        meta: "Queen sacrifice on move 24",
-      },
-    ],
+    gallery: [],
+    videos: [],
   },
   {
     slug: "carrom",
@@ -642,18 +555,8 @@ export const tournaments: Tournament[] = [
       times: EVENING_TIMES,
       courtLabel: "Board",
     }),
-    gallery: gallery(
-      [indoorImg, ttImg, cricketImg],
-      ["Opening break", "Queen pocketed", "Board four finish"],
-    ),
-    videos: [
-      {
-        title: "Trick shots of week one",
-        duration: "1:48",
-        poster: indoorImg,
-        meta: "Round 1 highlights",
-      },
-    ],
+    gallery: [],
+    videos: [],
   },
   {
     slug: "darts",
@@ -686,13 +589,8 @@ export const tournaments: Tournament[] = [
       times: EVENING_TIMES,
       courtLabel: "Board",
     }),
-    gallery: gallery(
-      [indoorImg, ttImg, footballImg],
-      ["Checkout attempt", "Scoreboard duty", "Crowd at the board"],
-    ),
-    videos: [
-      { title: "170 checkout", duration: "0:44", poster: indoorImg, meta: "Round 2 · Deep Patel" },
-    ],
+    gallery: [],
+    videos: [],
   },
   {
     slug: "races-relay",
@@ -725,24 +623,8 @@ export const tournaments: Tournament[] = [
       times: OUTDOOR_TIMES,
       courtLabel: "Lane",
     }),
-    gallery: gallery(
-      [raceImg, footballImg, cricketImg, raceImg],
-      ["Heat one off the blocks", "Baton exchange", "Cheering the anchor leg", "Photo finish"],
-    ),
-    videos: [
-      {
-        title: "Relay semi-finals",
-        duration: "7:20",
-        poster: raceImg,
-        meta: "Four teams, two spots",
-      },
-      {
-        title: "100m final · slow motion",
-        duration: "0:52",
-        poster: footballImg,
-        meta: "Decided by 0.04s",
-      },
-    ],
+    gallery: [],
+    videos: [],
   },
 ];
 

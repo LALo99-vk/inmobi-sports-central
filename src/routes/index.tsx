@@ -2,6 +2,10 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight, CalendarDays, Clock, MapPin } from "lucide-react";
 
 import heroImg from "@/assets/hero.jpg";
+import mavericksLogo from "@/assets/teams/team-mavericks.png";
+import gladiatorsLogo from "@/assets/teams/team-gladiators.png";
+import raidersLogo from "@/assets/teams/team-raiders.png";
+import titansLogo from "@/assets/teams/team-titans.png";
 import { getTournaments } from "@/lib/tournament-data";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { cn } from "@/lib/utils";
@@ -111,24 +115,29 @@ function Home() {
               </span>
             )}
           </div>
-          <Link
-            to="/"
-            hash="tournaments"
+          <a
+            href="#tournaments"
             className="mt-10 inline-flex items-center gap-2 border-b-2 border-accent pb-1 font-display text-sm font-bold uppercase tracking-[0.16em] text-primary-foreground transition-colors hover:text-accent"
           >
             Explore tournaments
             <ArrowUpRight className="size-4" />
-          </Link>
+          </a>
         </div>
       </section>
 
       {/* Teams strip */}
       <section className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-10 gap-y-3 px-5 py-5 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-10 gap-y-4 px-5 py-5 sm:px-8">
           <span className="eyebrow text-muted-foreground">Four teams</span>
-          {["Blue Moon Mavericks", "Golden Gladiators", "Red Raiders", "Teal Titans"].map((t) => (
-            <span key={t} className="font-display text-sm font-bold tracking-tight">
-              {t}
+          {[
+            { name: "Blue Moon Mavericks", logo: mavericksLogo },
+            { name: "Golden Gladiators", logo: gladiatorsLogo },
+            { name: "Red Raiders", logo: raidersLogo },
+            { name: "Teal Titans", logo: titansLogo },
+          ].map((t) => (
+            <span key={t.name} className="flex items-center gap-3">
+              <img src={t.logo} alt="" className="h-14 w-14 object-contain object-center" />
+              <span className="font-display text-sm font-bold tracking-tight">{t.name}</span>
             </span>
           ))}
         </div>

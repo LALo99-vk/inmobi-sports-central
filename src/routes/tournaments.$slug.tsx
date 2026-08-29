@@ -1,6 +1,15 @@
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import { ArrowLeft, CalendarDays, Clock, MapPin, Play, RefreshCw, Trophy } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Camera,
+  Clock,
+  MapPin,
+  Play,
+  RefreshCw,
+  Trophy,
+} from "lucide-react";
 
 import { getTournaments } from "@/lib/tournament-data";
 import type { Tournament } from "@/data/tournaments";
@@ -150,66 +159,82 @@ function TournamentPage() {
         {tab === "Gallery" && (
           <section>
             <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Gallery</h2>
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {t.gallery.map((g, i) => (
-                <figure
-                  key={i}
-                  className={cn(
-                    "group relative overflow-hidden rounded-md bg-secondary",
-                    i === 0 && "sm:col-span-2 sm:row-span-2",
-                  )}
-                >
-                  <img
-                    src={g.src}
-                    alt={g.caption}
-                    loading="lazy"
-                    width={1280}
-                    height={960}
+            {t.gallery.length === 0 ? (
+              <div className="mt-10 flex flex-col items-center justify-center gap-3 rounded-md bg-secondary py-24 text-center">
+                <Camera className="size-8 text-muted-foreground" />
+                <p className="font-display text-lg font-bold">Photos are on their way</p>
+                <p className="text-sm text-muted-foreground">Check back soon.</p>
+              </div>
+            ) : (
+              <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {t.gallery.map((g, i) => (
+                  <figure
+                    key={i}
                     className={cn(
-                      "w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]",
-                      i === 0 ? "h-72 sm:h-[33rem]" : "h-56",
+                      "group relative overflow-hidden rounded-md bg-secondary",
+                      i === 0 && "sm:col-span-2 sm:row-span-2",
                     )}
-                  />
-                  <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-sm font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-                    {g.caption}
-                  </figcaption>
-                </figure>
-              ))}
-            </div>
+                  >
+                    <img
+                      src={g.src}
+                      alt={g.caption}
+                      loading="lazy"
+                      width={1280}
+                      height={960}
+                      className={cn(
+                        "w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]",
+                        i === 0 ? "h-72 sm:h-[33rem]" : "h-56",
+                      )}
+                    />
+                    <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-sm font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
+                      {g.caption}
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
           </section>
         )}
         {tab === "Videos" && (
           <section>
             <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Videos</h2>
-            <div className="mt-10 grid gap-8 lg:grid-cols-2">
-              {t.videos.map((v, i) => (
-                <article key={i} className={cn(i === 0 && "lg:col-span-2")}>
-                  <div className="group relative overflow-hidden rounded-md bg-primary">
-                    <img
-                      src={v.poster}
-                      alt={v.title}
-                      loading="lazy"
-                      width={1280}
-                      height={960}
-                      className={cn(
-                        "w-full object-cover opacity-80 transition-all duration-700 group-hover:scale-[1.02] group-hover:opacity-70",
-                        i === 0 ? "h-64 sm:h-[26rem]" : "h-56",
-                      )}
-                    />
-                    <button className="absolute inset-0 flex items-center justify-center">
-                      <span className="flex size-16 items-center justify-center rounded-full bg-accent text-accent-foreground transition-transform group-hover:scale-105">
-                        <Play className="size-6 translate-x-0.5 fill-current" />
+            {t.videos.length === 0 ? (
+              <div className="mt-10 flex flex-col items-center justify-center gap-3 rounded-md bg-secondary py-24 text-center">
+                <Play className="size-8 text-muted-foreground" />
+                <p className="font-display text-lg font-bold">Videos are on their way</p>
+                <p className="text-sm text-muted-foreground">Check back soon.</p>
+              </div>
+            ) : (
+              <div className="mt-10 grid gap-8 lg:grid-cols-2">
+                {t.videos.map((v, i) => (
+                  <article key={i} className={cn(i === 0 && "lg:col-span-2")}>
+                    <div className="group relative overflow-hidden rounded-md bg-primary">
+                      <img
+                        src={v.poster}
+                        alt={v.title}
+                        loading="lazy"
+                        width={1280}
+                        height={960}
+                        className={cn(
+                          "w-full object-cover opacity-80 transition-all duration-700 group-hover:scale-[1.02] group-hover:opacity-70",
+                          i === 0 ? "h-64 sm:h-[26rem]" : "h-56",
+                        )}
+                      />
+                      <button className="absolute inset-0 flex items-center justify-center">
+                        <span className="flex size-16 items-center justify-center rounded-full bg-accent text-accent-foreground transition-transform group-hover:scale-105">
+                          <Play className="size-6 translate-x-0.5 fill-current" />
+                        </span>
+                      </button>
+                      <span className="absolute bottom-3 right-3 rounded bg-black/65 px-2 py-0.5 text-xs font-medium tabular-nums text-white">
+                        {v.duration}
                       </span>
-                    </button>
-                    <span className="absolute bottom-3 right-3 rounded bg-black/65 px-2 py-0.5 text-xs font-medium tabular-nums text-white">
-                      {v.duration}
-                    </span>
-                  </div>
-                  <h3 className="mt-4 font-display text-lg font-bold">{v.title}</h3>
-                  <p className="text-sm text-muted-foreground">{v.meta}</p>
-                </article>
-              ))}
-            </div>
+                    </div>
+                    <h3 className="mt-4 font-display text-lg font-bold">{v.title}</h3>
+                    <p className="text-sm text-muted-foreground">{v.meta}</p>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
         )}
       </main>
