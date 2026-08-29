@@ -55,7 +55,20 @@ const MATCH_HEADERS: Record<MatchField, string[]> = {
   score2: ["score2", "scoreb", "points2", "team2score", "player2score"],
   // A single column holding both, e.g. "21-14".
   score: ["score", "scores", "finalscore", "points", "scoreline"],
-  board: ["board", "court", "table", "pitch", "lane", "ground", "venue"],
+  board: [
+    "board",
+    "boardnumber",
+    "boardno",
+    "boardnum",
+    "court",
+    "courtnumber",
+    "table",
+    "tablenumber",
+    "pitch",
+    "lane",
+    "ground",
+    "venue",
+  ],
   timing: ["timing", "time", "slot", "matchtime"],
   day: ["day", "date", "matchday"],
   winner: ["winner", "won", "result", "winningteam", "winnerteam"],
@@ -86,6 +99,20 @@ export function buildColumnMap(header: string[]): ColumnMap {
     map.matchNo = 0;
   }
   return map;
+}
+
+/**
+ * The word the sheet chose for where a match is played — "Board number" gives
+ * "Board", "Court No" gives "Court". Chess plays on boards, badminton on
+ * courts; carrying the team's own word through beats guessing.
+ */
+export function courtLabelFrom(header: string): string | undefined {
+  const first = header
+    .trim()
+    .split(/[^A-Za-z]+/)
+    .filter(Boolean)[0];
+  if (!first) return undefined;
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
 const cell = (row: string[], index: number | undefined) =>
@@ -127,6 +154,14 @@ export function splitPlayers(value: string): string[] {
 }
 
 /**
+ * A row with no real opponent. The chess draw seeds 83 players, so 45 of them
+ * sit out the first round against one of these.
+ */
+const BYE_CELLS = ["bye", "byes", "walkover", "wo", "noopponent", "none"];
+
+export const isByeCell = (value: string) => BYE_CELLS.includes(normalizeHeader(value));
+
+/**
  * Pulls a trailing "(RR)" house tag off a name. Used only as a fallback for
  * rows written before the Group columns existed.
  */
@@ -148,13 +183,30 @@ const ROUND_ALIASES: { canonical: string; order: number; keys: string[] }[] = [
     keys: ["round2", "r2", "roundtwo", "prequarterfinals", "prequarters", "pqf"],
   },
   { canonical: "Round 3", order: 3, keys: ["round3", "r3", "roundthree"] },
+  { canonical: "Round 4", order: 4, keys: ["round4", "r4", "roundfour"] },
+  { canonical: "Round 5", order: 5, keys: ["round5", "r5", "roundfive"] },
   {
     canonical: "Quarter-Finals",
-    order: 4,
+    order: 6,
     keys: ["quarterfinals", "quarterfinal", "quarters", "quarter", "qf"],
   },
-  { canonical: "Semi-Finals", order: 5, keys: ["semifinals", "semifinal", "semis", "semi", "sf"] },
-  { canonical: "Final", order: 6, keys: ["final", "finals", "grandfinal", "f"] },
+  { canonical: "Semi-Finals", order: 7, keys: ["semifinals", "semifinal", "semis", "semi", "sf"] },
+  { canonical: "Final", order: 8, keys: ["final", "finals", "grandfinal", "f"] },
+  // Played off the ladder, so it sorts last rather than feeding anything.
+  {
+    canonical: "Third Place",
+    order: 9,
+    keys: [
+      "thirdplace",
+      "thirdplacematch",
+      "thirdplaceplayoff",
+      "3rdplace",
+      "3rdplacematch",
+      "bronze",
+      "bronzematch",
+      "playoff",
+    ],
+  },
 ];
 
 export function normalizeRound(value: string) {
@@ -166,10 +218,23 @@ export function normalizeRound(value: string) {
  * Progression references
  * ------------------------------------------------------------------ */
 
-/** "Winner Match 1" / "Winner of M1" / "W1" -> 1 */
-export function parseWinnerRef(value: string): number | null {
-  const match = value.trim().match(/^w(?:inner)?\.?\s*(?:of\s*)?(?:match|m)?\s*#?\s*(\d+)$/i);
-  return match?.[1] ? Number(match[1]) : null;
+/** Which side of an earlier match feeds this slot. */
+export type SlotRef = { match: number; take: "winner" | "loser" };
+
+/**
+ * "Winner Match 1" / "Winner of M1" / "W1" -> the winner of match 1;
+ * "Loser of Match 126" / "L126" -> its loser, which is how a third-place
+ * play-off names its two entrants.
+ */
+export function parseSlotRef(value: string): SlotRef | null {
+  const match = value
+    .trim()
+    .match(/^(w(?:inner)?|l(?:oser)?)\.?\s*(?:of\s*)?(?:match|m)?\s*#?\s*(\d+)$/i);
+  if (!match?.[1] || !match[2]) return null;
+  return {
+    match: Number(match[2]),
+    take: match[1].toLowerCase().startsWith("l") ? "loser" : "winner",
+  };
 }
 
 function parseScore(value: string): number | string | null {
@@ -210,6 +275,10 @@ type RawSide = {
   group?: string | undefined;
   /** Set when the cell said "Winner Match 3" rather than naming anyone. */
   fromMatch?: number | undefined;
+  /** Which half of that match feeds this slot. */
+  take: "winner" | "loser";
+  /** The cell said "Bye": nobody is coming, the other side goes through. */
+  isBye: boolean;
   score: number | string | null;
 };
 
@@ -234,9 +303,13 @@ function readSide(row: string[], columns: ColumnMap, side: 1 | 2): RawSide {
   const combined = own ? null : splitCombinedScore(cell(row, columns.score));
   const score = parseScore(own || (combined ? (side === 1 ? combined[0] : combined[1]) : ""));
 
-  const ref = parseWinnerRef(raw);
+  if (isByeCell(raw)) {
+    return { players: [], take: "winner", isBye: true, score };
+  }
+
+  const ref = parseSlotRef(raw);
   if (ref !== null) {
-    return { players: [], fromMatch: ref, score };
+    return { players: [], fromMatch: ref.match, take: ref.take, isBye: false, score };
   }
 
   const parts = splitPlayers(raw);
@@ -247,6 +320,8 @@ function readSide(row: string[], columns: ColumnMap, side: 1 | 2): RawSide {
   return {
     players: tagged.map((entry) => entry.name).filter(Boolean),
     group,
+    take: "winner",
+    isBye: false,
     score,
   };
 }
@@ -258,7 +333,7 @@ function readSide(row: string[], columns: ColumnMap, side: 1 | 2): RawSide {
 export function parseMatchTab(
   tab: string,
   grid: SheetGrid,
-): { rounds: BracketRound[]; warnings: ParseWarning[] } {
+): { rounds: BracketRound[]; warnings: ParseWarning[]; courtLabel?: string | undefined } {
   const warnings: ParseWarning[] = [];
   const header = grid[0];
   if (!header) {
@@ -267,6 +342,9 @@ export function parseMatchTab(
   }
 
   const columns = buildColumnMap(header);
+  const courtLabel =
+    columns.board === undefined ? undefined : courtLabelFrom(header[columns.board] ?? "");
+
   for (const required of ["round", "team1", "team2"] as const) {
     if (columns[required] === undefined) {
       warnings.push({
@@ -356,6 +434,12 @@ export function parseMatchTab(
   }
 
   function computeWinner(match: RawMatch): 0 | 1 | null {
+    // Nobody records a result for a bye, so without this the player sitting the
+    // round out never advances and every slot downstream of them stays "TBD".
+    if (match.sides[0].isBye !== match.sides[1].isBye) {
+      return match.sides[0].isBye ? 1 : 0;
+    }
+
     // A filled Winner is the definitive signal, even if Status still says Live.
     // People mark a match live when it starts and rarely go back to change it;
     // letting a stale Status hide a recorded winner would stall the whole ladder.
@@ -390,11 +474,54 @@ export function parseMatchTab(
     return null;
   }
 
-  /** Follows a "Winner Match N" chain to whoever actually holds the slot. */
+  /**
+   * Links a side back to the match its players just won.
+   *
+   * The team fills the next round in either of two ways: "Winner of Match 3",
+   * or the winners' names typed straight in once the match is played. The
+   * second kind carries no reference, so without this the earlier match is left
+   * hanging off the ladder with nothing flowing out of it.
+   */
+  function linkNamedWinners() {
+    // Every match a given pairing has won, by round.
+    const wins = new Map<string, { matchNumber: number; roundOrder: number }[]>();
+    const keyOf = (players: string[]) =>
+      players.map(normalizeHeader).filter(Boolean).sort().join("|");
+
+    for (const match of raw) {
+      const index = winnerOf(match);
+      if (index === null) continue;
+      const winner = match.sides[index];
+      if (!winner.players.length) continue;
+      const key = keyOf(winner.players);
+      if (!key) continue;
+      const list = wins.get(key) ?? [];
+      list.push({ matchNumber: match.matchNumber, roundOrder: match.roundOrder });
+      wins.set(key, list);
+    }
+
+    for (const match of raw) {
+      for (const side of match.sides) {
+        if (side.fromMatch !== undefined || !side.players.length) continue;
+        const candidates = wins.get(keyOf(side.players));
+        if (!candidates) continue;
+        // The most recent win before this round — in a knockout a pairing's
+        // matches form a chain, so that is the one that put them here.
+        const feeder = candidates
+          .filter((c) => c.roundOrder < match.roundOrder && c.matchNumber !== match.matchNumber)
+          .sort((a, b) => b.roundOrder - a.roundOrder)[0];
+        if (feeder) side.fromMatch = feeder.matchNumber;
+      }
+    }
+  }
+
+  linkNamedWinners();
+
+  /** Follows a "Winner/Loser Match N" chain to whoever actually holds the slot. */
   function resolve(
     side: RawSide,
     seen: Set<number>,
-  ): { players: string[]; group?: string | undefined } | null {
+  ): { players: string[]; group?: string | undefined; viaBye?: boolean } | null {
     if (side.players.length > 0) return { players: side.players, group: side.group };
     if (side.fromMatch === undefined) return null;
     if (seen.has(side.fromMatch)) return null; // guards a circular reference
@@ -405,22 +532,44 @@ export function parseMatchTab(
       warnings.push({
         tab,
         row: null,
-        message: `A row points at "Winner Match ${side.fromMatch}", but no match ${side.fromMatch} exists.`,
+        message:
+          `A row points at "${side.take === "loser" ? "Loser" : "Winner"} Match ${side.fromMatch}", ` +
+          `but no match ${side.fromMatch} exists.`,
       });
       return null;
     }
     const index = winnerOf(feeder);
     if (index === null) return null;
-    return resolve(feeder.sides[index], seen);
+    // The loser is simply the side that didn't win, which is what a
+    // third-place play-off is waiting on.
+    const wanted = side.take === "loser" ? (index === 0 ? 1 : 0) : index;
+    const resolved = resolve(feeder.sides[wanted], seen);
+    if (!resolved) return null;
+    // Only the hop we just took counts: a player who took a bye in round 1 and
+    // then won round 2 is in round 3 on merit.
+    return { ...resolved, viaBye: feeder.sides[0].isBye || feeder.sides[1].isBye };
   }
 
   function toSlot(side: RawSide): BracketSlot {
     const resolved = resolve(side, new Set());
+    const label = side.take === "loser" ? "Loser" : "Winner";
+    // resolve() stops as soon as it has names, so a player typed straight into
+    // the next round never reports how they got there. Check the feeder here.
+    const feeder = side.fromMatch === undefined ? undefined : byNumber.get(side.fromMatch);
+    const viaBye = resolved?.viaBye || feeder?.sides.some((s) => s.isBye) || undefined;
     return {
       players: resolved?.players.length ? resolved.players : null,
       group: resolved?.group,
-      source: side.fromMatch !== undefined ? `Winner · M${side.fromMatch}` : undefined,
-      fromMatch: side.fromMatch,
+      bye: side.isBye || undefined,
+      viaBye,
+      source: side.isBye
+        ? "Bye"
+        : side.fromMatch !== undefined
+          ? `${label} · M${side.fromMatch}`
+          : undefined,
+      // Only a winner feeds the next round, so only that draws a connector —
+      // a third-place play-off would otherwise trail a line across the Final.
+      fromMatch: side.take === "winner" ? side.fromMatch : undefined,
       score: side.score,
     };
   }
@@ -457,7 +606,7 @@ export function parseMatchTab(
     round.matches.push(match);
   }
 
-  return { rounds, warnings };
+  return { rounds, warnings, ...(courtLabel ? { courtLabel } : {}) };
 }
 
 /* ------------------------------------------------------------------ *

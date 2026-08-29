@@ -147,14 +147,14 @@ export function buildFromTabs(tabs: Record<string, SheetGrid>): {
     const grid = findTab(tabs, config.sheetTab.trim().toLowerCase());
     if (!grid?.length) continue;
 
-    const { rounds, warnings: tabWarnings } = parseMatchTab(config.sheetTab, grid);
+    const { rounds, warnings: tabWarnings, courtLabel } = parseMatchTab(config.sheetTab, grid);
     warnings.push(...tabWarnings);
     if (!rounds.length) continue;
 
     const template = fallbackTournaments.find((t) => t.slug === config.slug);
     const base = template ? applyConfig(template, config) : blankTournament(config.slug, config);
 
-    built.set(config.slug, { ...base, rounds });
+    built.set(config.slug, { ...base, rounds, ...(courtLabel ? { courtLabel } : {}) });
     fromSheet.push(config.slug);
   }
 

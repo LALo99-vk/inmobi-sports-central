@@ -46,6 +46,10 @@ export type BracketSlot = {
   source?: string | undefined;
   /** Match number this slot is fed by, when the sheet said "Winner Match 3". */
   fromMatch?: number | undefined;
+  /** This side is a bye — the sheet left no opponent here. */
+  bye?: boolean | undefined;
+  /** The player reached this slot on a bye rather than by winning. */
+  viaBye?: boolean | undefined;
   score?: number | string | null | undefined;
 };
 
@@ -81,6 +85,8 @@ export type Tournament = {
   image: string;
   accent: "ember" | "turf" | "sky" | "ink";
   participants: ParticipantKind;
+  /** What the sheet calls the playing surface: "Board", "Court", "Table". */
+  courtLabel?: string | undefined;
   about: string;
   info: { label: string; value: string }[];
   rounds: BracketRound[];

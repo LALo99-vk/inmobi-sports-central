@@ -1,7 +1,8 @@
-import { useMemo } from "react";
-import { Trophy } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Search, Trophy } from "lucide-react";
 
 import type { BracketMatch, BracketRound, BracketSlot, ParticipantKind } from "@/data/tournaments";
+import { buildSections, isByeMatch, searchText } from "@/lib/bracket-sections";
 import { getGroup } from "@/data/tournaments";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
@@ -232,6 +233,15 @@ function SlotRow({
         )}
       </div>
 
+      {slot.viaBye && (
+        <span
+          title="Advanced without playing — no opponent in the previous round"
+          className="shrink-0 rounded bg-secondary px-1 py-0.5 text-[0.5rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80"
+        >
+          from bye
+        </span>
+      )}
+
       {slot.score !== null && slot.score !== undefined && (
         <span
           className={cn(
@@ -255,16 +265,24 @@ function MatchCard({
   kind,
   rowH,
   compact,
+  courtLabel,
+  highlighted,
   style,
 }: {
   match: BracketMatch;
   kind: ParticipantKind;
   rowH: number;
   compact: boolean;
+  courtLabel?: string | undefined;
+  highlighted?: boolean | undefined;
   style: React.CSSProperties;
 }) {
   const live = match.status === "live";
   const done = match.status === "completed";
+  // Where first, then when: on a narrow card the tail is what gets truncated,
+  // and "which board am I on" is the thing a player actually came to find out.
+  const where = match.court ? [courtLabel, match.court].filter(Boolean).join(" ") : "";
+  const meta = [where, match.time].filter(Boolean).join(" · ");
 
   return (
     <article
@@ -277,6 +295,7 @@ function MatchCard({
         done &&
           "border-border bg-card shadow-[0_1px_3px_rgba(20,20,50,0.07)] hover:border-accent/60 hover:shadow-[0_4px_14px_-4px_rgba(20,20,50,0.16)]",
         !live && !done && "border-dashed border-border bg-card/55 hover:border-foreground/25",
+        highlighted && "border-sky ring-2 ring-sky/35",
       )}
     >
       <div
@@ -286,7 +305,9 @@ function MatchCard({
         <span className="font-display text-[0.6rem] font-extrabold tracking-[0.1em] text-muted-foreground/70">
           M{match.matchNumber}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[0.66rem] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-[0.66rem] text-muted-foreground" title={meta}>
+          {where && <span className="font-medium text-foreground/70">{where}</span>}
+          {where && match.time && " · "}
           {match.time}
         </span>
         <StatusTag status={match.status} compact={compact} />
@@ -314,7 +335,20 @@ function MatchCard({
   );
 }
 
-export function Bracket({ rounds, kind }: { rounds: BracketRound[]; kind: ParticipantKind }) {
+function Ladder({
+  rounds,
+  kind,
+  courtLabel,
+  showChampion = true,
+  highlight,
+}: {
+  rounds: BracketRound[];
+  kind: ParticipantKind;
+  courtLabel?: string | undefined;
+  /** A section of a draw ends in a quarter-finalist, not the trophy. */
+  showChampion?: boolean;
+  highlight?: Set<string>;
+}) {
   // A 244px card leaves barely one column visible on a phone, so the whole
   // ladder tightens up on small screens rather than forcing endless swiping.
   const isMobile = useIsMobile();
@@ -406,7 +440,7 @@ export function Bracket({ rounds, kind }: { rounds: BracketRound[]; kind: Partic
     const champX = rounds.length * pitch;
     const champY = finalCard?.y ?? BAND_H + cardH / 2;
 
-    if (finalCard && finalMatch) {
+    if (showChampion && finalCard && finalMatch) {
       const champState = stateOf(finalMatch);
       segments.push({
         key: "champ",
@@ -417,7 +451,7 @@ export function Bracket({ rounds, kind }: { rounds: BracketRound[]; kind: Partic
     }
 
     const champion =
-      finalMatch?.status === "completed" && finalMatch.winner
+      showChampion && finalMatch?.status === "completed" && finalMatch.winner
         ? ((finalMatch.winner === "a" ? finalMatch.a : finalMatch.b).players ?? null)
         : null;
 
@@ -431,14 +465,27 @@ export function Bracket({ rounds, kind }: { rounds: BracketRound[]; kind: Partic
       champX,
       champY,
       champion,
-      width: champX + champW,
+      width: showChampion ? champX + champW : champX - gutter + 16,
       height: bottom + cardH / 2 + 24,
     };
-  }, [rounds, cardH, slotH, colW, gutter, pitch, champW]);
+  }, [rounds, cardH, slotH, colW, gutter, pitch, champW, showChampion]);
+
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const check = () => setOverflows(element.scrollWidth - element.clientWidth > 4);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [layout.width]);
 
   return (
     <div className="relative">
-      <div className="-mx-5 overflow-x-auto px-5 pb-4 sm:-mx-8 sm:px-8">
+      <div ref={scrollRef} className="-mx-5 overflow-x-auto px-5 pb-4 sm:-mx-8 sm:px-8">
         <div className="relative" style={{ width: layout.width, height: layout.height }}>
           {/* Alternating lanes give the ladder a rhythm and tie each column together */}
           {rounds.map((round, r) => (
@@ -558,15 +605,17 @@ export function Bracket({ rounds, kind }: { rounds: BracketRound[]; kind: Partic
               </div>
             );
           })}
-          <div className="absolute" style={{ left: layout.champX, top: 0, width: champW }}>
-            <h3 className="font-display text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-accent">
-              Champion
-            </h3>
-            <div className="mt-1.5 text-[0.66rem] text-muted-foreground">
-              {layout.champion ? "Decided" : "To be decided"}
+          {showChampion && (
+            <div className="absolute" style={{ left: layout.champX, top: 0, width: champW }}>
+              <h3 className="font-display text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-accent">
+                Champion
+              </h3>
+              <div className="mt-1.5 text-[0.66rem] text-muted-foreground">
+                {layout.champion ? "Decided" : "To be decided"}
+              </div>
+              <div className="mt-2 h-[3px] w-full rounded-full bg-accent/25" />
             </div>
-            <div className="mt-2 h-[3px] w-full rounded-full bg-accent/25" />
-          </div>
+          )}
 
           {/* Match cards */}
           {layout.cards.map((card) => (
@@ -576,6 +625,8 @@ export function Bracket({ rounds, kind }: { rounds: BracketRound[]; kind: Partic
               kind={kind}
               rowH={rowH}
               compact={isMobile}
+              courtLabel={courtLabel}
+              highlighted={highlight?.has(card.match.id)}
               style={{
                 left: card.x,
                 top: card.y - cardH / 2,
@@ -587,48 +638,203 @@ export function Bracket({ rounds, kind }: { rounds: BracketRound[]; kind: Partic
           ))}
 
           {/* Champion */}
-          <div
-            className={cn(
-              "absolute flex flex-col justify-center rounded-md px-4",
-              layout.champion
-                ? "ink-panel border-t-2 border-accent"
-                : "border border-dashed border-border bg-card",
-            )}
-            style={{
-              left: layout.champX,
-              top: layout.champY - cardH / 2,
-              width: champW,
-              height: cardH,
-            }}
-          >
-            <Trophy
-              className={cn("size-4", layout.champion ? "text-accent" : "text-muted-foreground/50")}
-            />
-            {layout.champion ? (
-              <div className="mt-2">
-                {layout.champion.map((p) => (
-                  <p
-                    key={p}
-                    className="truncate font-display text-sm font-extrabold leading-tight text-primary-foreground"
-                  >
-                    {p}
-                  </p>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-2 text-[0.78rem] italic text-muted-foreground/60">
-                Decided at the final
-              </p>
-            )}
-          </div>
+          {showChampion && (
+            <div
+              className={cn(
+                "absolute flex flex-col justify-center rounded-md px-4",
+                layout.champion
+                  ? "ink-panel border-t-2 border-accent"
+                  : "border border-dashed border-border bg-card",
+              )}
+              style={{
+                left: layout.champX,
+                top: layout.champY - cardH / 2,
+                width: champW,
+                height: cardH,
+              }}
+            >
+              <Trophy
+                className={cn(
+                  "size-4",
+                  layout.champion ? "text-accent" : "text-muted-foreground/50",
+                )}
+              />
+              {layout.champion ? (
+                <div className="mt-2">
+                  {layout.champion.map((p) => (
+                    <p
+                      key={p}
+                      className="truncate font-display text-sm font-extrabold leading-tight text-primary-foreground"
+                    >
+                      {p}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-[0.78rem] italic text-muted-foreground/60">
+                  Decided at the final
+                </p>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* scroll affordance */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-16 bg-gradient-to-l from-background to-transparent sm:block" />
-      <p className="mt-1 text-[0.7rem] text-muted-foreground/70 sm:hidden">
-        Swipe across to follow the ladder →
-      </p>
+      {/* Scroll affordance — only when there is somewhere to scroll to, or it
+          washes over the last column for no reason. */}
+      {overflows && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 right-0 hidden w-16 bg-gradient-to-l from-background to-transparent sm:block" />
+          <p className="mt-1 text-[0.7rem] text-muted-foreground/70 sm:hidden">
+            Swipe across to follow the ladder →
+          </p>
+        </>
+      )}
     </div>
+  );
+}
+
+export function Bracket({
+  rounds,
+  kind,
+  courtLabel,
+}: {
+  rounds: BracketRound[];
+  kind: ParticipantKind;
+  courtLabel?: string | undefined;
+}) {
+  const [tab, setTab] = useState(0);
+  const [query, setQuery] = useState("");
+
+  // A bye is a formality rather than a fixture: the player it lets through is
+  // already standing in the next round, so drawing it would only add noise.
+  const played = useMemo(
+    () =>
+      rounds
+        .map((round) => ({ ...round, matches: round.matches.filter((m) => !isByeMatch(m)) }))
+        .filter((round) => round.matches.length > 0),
+    [rounds],
+  );
+
+  // The third-place play-off hangs off the semi-finals rather than feeding the
+  // final, so it would draw a line back across the ladder. It rides along with
+  // the closing rounds instead.
+  const thirdPlace = useMemo(() => played.find((round) => round.name === "Third Place"), [played]);
+  const ladder = useMemo(() => played.filter((round) => round.name !== "Third Place"), [played]);
+
+  const sections = useMemo(() => buildSections(ladder), [ladder]);
+  const sectioned = sections.length > 1;
+
+  const q = query.trim().toLowerCase();
+  const hits = useMemo(() => {
+    if (!q) return [];
+    return sections.flatMap((section, index) =>
+      section.rounds.flatMap((round) =>
+        round.matches
+          .filter((match) => searchText(match).includes(q))
+          .map((match) => ({ match, index })),
+      ),
+    );
+  }, [sections, q]);
+
+  const highlight = useMemo(() => new Set(hits.map((hit) => hit.match.id)), [hits]);
+  // Searching moves you to wherever the player actually is.
+  const active = Math.min(q && hits.length ? (hits[0]?.index ?? tab) : tab, sections.length - 1);
+  const current = sections[active];
+
+  if (!current) return null;
+
+  return (
+    <div className="space-y-8">
+      {sectioned && (
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-1.5">
+            {sections.map((section, index) => (
+              <button
+                key={section.name}
+                type="button"
+                onClick={() => {
+                  setTab(index);
+                  setQuery("");
+                }}
+                className={cn(
+                  "rounded border px-3 py-1.5 font-display text-[0.72rem] font-bold uppercase tracking-[0.1em] transition-colors",
+                  index === active
+                    ? "border-accent bg-accent/10 text-foreground"
+                    : "border-border text-muted-foreground hover:border-foreground/30 hover:text-foreground",
+                )}
+              >
+                {section.name}
+              </button>
+            ))}
+          </div>
+
+          <label className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find a player…"
+              className="w-52 rounded border border-border bg-card py-1.5 pl-8 pr-3 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-accent"
+            />
+          </label>
+        </div>
+      )}
+
+      {sectioned && q && (
+        <p className="text-sm text-muted-foreground">
+          {hits.length === 0
+            ? `Nobody matching “${query}”.`
+            : `${hits.length} match${hits.length === 1 ? "" : "es"} for “${query}” — showing ${current.name}.`}
+        </p>
+      )}
+
+      <Ladder
+        key={current.name}
+        rounds={current.rounds}
+        kind={kind}
+        courtLabel={courtLabel}
+        showChampion={current.endsInChampion}
+        highlight={highlight}
+      />
+
+      {thirdPlace && current.endsInChampion && (
+        <ThirdPlace
+          match={thirdPlace.matches[0] as BracketMatch}
+          kind={kind}
+          courtLabel={courtLabel}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The bronze match, shown beside the ladder rather than inside it. */
+function ThirdPlace({
+  match,
+  kind,
+  courtLabel,
+}: {
+  match: BracketMatch;
+  kind: ParticipantKind;
+  courtLabel?: string | undefined;
+}) {
+  return (
+    <section className="border-t border-border pt-6">
+      <h4 className="font-display text-[0.78rem] font-extrabold uppercase tracking-[0.16em] text-foreground/80">
+        Third place play-off
+      </h4>
+      <div className="relative mt-3" style={{ height: HEAD_H + 40 * 2, width: COL_W }}>
+        <MatchCard
+          match={match}
+          kind={kind}
+          rowH={40}
+          compact={false}
+          courtLabel={courtLabel}
+          style={{ left: 0, top: 0, width: COL_W, height: HEAD_H + 40 * 2 }}
+        />
+      </div>
+    </section>
   );
 }

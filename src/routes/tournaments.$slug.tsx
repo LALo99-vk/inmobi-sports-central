@@ -154,7 +154,7 @@ function TournamentPage() {
               </div>
             </div>
             <div className="mt-10">
-              <Bracket rounds={t.rounds} kind={t.participants} />
+              <Bracket rounds={t.rounds} kind={t.participants} courtLabel={t.courtLabel} />
             </div>
           </section>
         )}
