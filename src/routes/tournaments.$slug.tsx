@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { getTournaments } from "@/lib/tournament-data";
+import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import type { Tournament } from "@/data/tournaments";
 import { Bracket } from "@/components/bracket";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
@@ -55,6 +56,7 @@ type Tab = (typeof TABS)[number];
 function TournamentPage() {
   const { tournament: t, others, fetchedAt } = Route.useLoaderData();
   const [tab, setTab] = useState<Tab>("Details");
+  useAutoRefresh(60_000);
 
   return (
     <div className="min-h-screen">

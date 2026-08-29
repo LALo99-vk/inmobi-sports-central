@@ -7,6 +7,7 @@ import gladiatorsLogo from "@/assets/teams/team-gladiators.png";
 import raidersLogo from "@/assets/teams/team-raiders.png";
 import titansLogo from "@/assets/teams/team-titans.png";
 import { getTournaments } from "@/lib/tournament-data";
+import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { cn } from "@/lib/utils";
 
@@ -67,6 +68,7 @@ const schedule = [
 
 function Home() {
   const { tournaments } = Route.useLoaderData();
+  useAutoRefresh(60_000);
   const count = tournaments.length;
   const venues = new Set(tournaments.map((t) => t.venue)).size;
 
