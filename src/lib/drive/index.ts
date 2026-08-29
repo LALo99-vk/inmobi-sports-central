@@ -45,17 +45,21 @@ function formatDuration(millis: string | undefined): string {
 }
 
 /**
- * Drive only serves a thumbnail for a file anyone with the link can open —
- * anything else redirects to the sign-in page. That redirect is precisely the
- * signal that the video will not play for visitors, and it tests the same path
- * their browser will take rather than guessing from the file's metadata.
+ * Drive serves a thumbnail only for a file anyone with the link can open;
+ * everything else ends up at a sign-in page instead. So ask for the thumbnail
+ * as a visitor's browser would and see whether an actual image comes back.
+ *
+ * Note the redirect: this endpoint always bounces to Google's image host, for
+ * public and private files alike, so the redirect itself says nothing. Only
+ * what it lands on does.
  */
 async function isPubliclyViewable(id: string): Promise<boolean> {
   try {
-    const response = await fetch(`https://drive.google.com/thumbnail?id=${id}&sz=w320`, {
-      redirect: "manual",
-    });
-    return response.status === 200;
+    const response = await fetch(`https://drive.google.com/thumbnail?id=${id}&sz=w320`);
+    const isImage =
+      response.ok && (response.headers.get("content-type") ?? "").startsWith("image/");
+    await response.body?.cancel();
+    return isImage;
   } catch {
     return false;
   }
