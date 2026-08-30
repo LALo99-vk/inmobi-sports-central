@@ -68,7 +68,7 @@ function PointsTablePage() {
             Points Table
           </h1>
           <p className="mt-5 max-w-xl text-lg text-primary-foreground/75">
-            Every sport is worth 50 points. One table for the whole of Sports Day 2026.
+            Every sport is worth 50 points.
           </p>
 
           <CarnivalProgress table={points} />
@@ -202,9 +202,12 @@ function TeamCard({
   const behind = leaderPoints - entry.total;
 
   return (
+    // A row on a phone, the full card from sm up. Four portrait cards stacked
+    // on a narrow screen pushed the standings table three scrolls down.
     <article
       className={cn(
-        "relative flex flex-col border border-border bg-card p-6 transition-colors",
+        "relative flex items-center gap-4 border border-border bg-card px-4 py-3.5 transition-colors",
+        "sm:flex-col sm:items-stretch sm:gap-0 sm:p-6",
         isLeader && "border-accent/60 bg-secondary/40",
       )}
     >
@@ -213,31 +216,54 @@ function TeamCard({
         style={{ backgroundColor: entry.team.color }}
         aria-hidden
       />
-      <div className="flex items-start justify-between gap-3">
+
+      <span className="w-6 shrink-0 font-display text-sm font-bold tabular-nums text-muted-foreground/70 sm:hidden">
+        {started ? `#${entry.rank}` : "—"}
+      </span>
+
+      {logo && (
+        <img
+          src={logo}
+          alt=""
+          className="size-11 shrink-0 object-contain sm:order-2 sm:mt-4 sm:size-16 sm:self-start"
+          width={64}
+          height={64}
+        />
+      )}
+
+      <div className="hidden items-start justify-between gap-3 sm:order-1 sm:flex">
         <span className="font-display text-sm font-bold tabular-nums text-muted-foreground/70">
           {started ? `#${entry.rank}` : "—"}
         </span>
         {isLeader && <span className="eyebrow text-[0.62rem] text-accent">Leading</span>}
       </div>
 
-      {logo && (
-        <img
-          src={logo}
-          alt=""
-          className="mt-4 h-16 w-16 object-contain object-left"
-          width={64}
-          height={64}
-        />
-      )}
-      <h3 className="mt-4 font-display text-lg font-extrabold leading-tight">{entry.team.name}</h3>
-      <p className="text-sm text-muted-foreground">{entry.team.code}</p>
+      <div className="min-w-0 flex-1 sm:order-3 sm:flex-none">
+        <h3 className="font-display text-base font-extrabold leading-tight sm:mt-4 sm:text-lg">
+          {entry.team.name}
+        </h3>
+        <p className="hidden text-sm text-muted-foreground sm:block">{entry.team.code}</p>
+        <MedalLine entry={entry} className="mt-1 text-xs sm:hidden" />
+      </div>
 
-      <p className="mt-6 font-display text-4xl font-extrabold tabular-nums">{entry.total}</p>
-      <p className="text-xs uppercase tracking-wider text-muted-foreground">
-        {started && entry.rank !== 1 ? `points · ${behind} behind` : "points"}
-      </p>
+      <div className="shrink-0 text-right sm:order-4 sm:text-left">
+        <p className="font-display text-2xl font-extrabold tabular-nums sm:mt-6 sm:text-4xl">
+          {entry.total}
+        </p>
+        <p className="text-[0.6rem] uppercase tracking-wider text-muted-foreground sm:text-xs">
+          points
+          {/* "· 9 behind" costs width a phone row hasn't got; the standings
+              table right underneath carries the same comparison. */}
+          {started && entry.rank !== 1 && (
+            <span className="hidden sm:inline"> · {behind} behind</span>
+          )}
+        </p>
+      </div>
 
-      <MedalLine entry={entry} className="mt-4 border-t border-border pt-4 text-sm" />
+      <MedalLine
+        entry={entry}
+        className="hidden sm:order-5 sm:mt-4 sm:flex sm:border-t sm:border-border sm:pt-4 sm:text-sm"
+      />
     </article>
   );
 }

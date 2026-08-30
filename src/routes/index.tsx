@@ -115,13 +115,22 @@ function Home() {
               </span>
             )}
           </div>
-          <a
-            href="#tournaments"
-            className="mt-10 inline-flex items-center gap-2 border-b-2 border-accent pb-1 font-display text-sm font-bold uppercase tracking-[0.16em] text-primary-foreground transition-colors hover:text-accent"
-          >
-            Explore tournaments
-            <ArrowUpRight className="size-4" />
-          </a>
+          <div className="mt-10 flex flex-col items-start gap-5">
+            <a
+              href="#tournaments"
+              className="inline-flex items-center gap-2 border-b-2 border-accent pb-1 font-display text-sm font-bold uppercase tracking-[0.16em] text-primary-foreground transition-colors hover:text-accent"
+            >
+              Explore tournaments
+              <ArrowUpRight className="size-4" />
+            </a>
+            <Link
+              to="/points-table"
+              className="inline-flex items-center gap-2 border-b border-primary-foreground/30 pb-1 font-display text-sm font-bold uppercase tracking-[0.16em] text-primary-foreground/75 transition-colors hover:border-accent hover:text-accent"
+            >
+              Points table
+              <ArrowUpRight className="size-4" />
+            </Link>
+          </div>
         </div>
       </section>
 
@@ -135,13 +144,6 @@ function Home() {
               <span className="font-display text-sm font-bold tracking-tight">{team.name}</span>
             </span>
           ))}
-          <Link
-            to="/points-table"
-            className="ml-auto inline-flex items-center gap-1.5 border-b-2 border-accent pb-0.5 font-display text-sm font-bold uppercase tracking-[0.14em] transition-colors hover:text-accent"
-          >
-            Points table
-            <ArrowUpRight className="size-4" />
-          </Link>
         </div>
       </section>
 

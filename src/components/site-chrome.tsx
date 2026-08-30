@@ -6,8 +6,10 @@ export function SiteHeader() {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
         <Link to="/" className="flex items-baseline gap-3">
           <span className="font-display text-lg font-extrabold tracking-tight">INMOBI</span>
-          <span className="h-4 w-px bg-border" />
-          <span className="eyebrow text-muted-foreground">Sports Day 2026</span>
+          {/* On a phone the nav needs the room more than the strapline does —
+              the hero says "Sports Day 2026" a few pixels further down anyway. */}
+          <span className="hidden h-4 w-px bg-border sm:block" />
+          <span className="eyebrow hidden text-muted-foreground sm:block">Sports Day 2026</span>
         </Link>
         <nav className="flex items-center gap-5 sm:gap-6">
           <Link
