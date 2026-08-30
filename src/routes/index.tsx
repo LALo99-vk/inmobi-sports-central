@@ -136,14 +136,25 @@ function Home() {
 
       {/* Teams strip */}
       <section className="border-b border-border bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-10 gap-y-4 px-5 py-5 sm:px-8">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-10 sm:gap-y-4 sm:px-8">
           <span className="eyebrow text-muted-foreground">Four teams</span>
-          {groups.map((team) => (
-            <span key={team.code} className="flex items-center gap-3">
-              <img src={teamLogo(team)} alt="" className="h-14 w-14 object-contain object-center" />
-              <span className="font-display text-sm font-bold tracking-tight">{team.name}</span>
-            </span>
-          ))}
+          {/* Two-by-two on a phone: names are different lengths, so letting them
+              wrap freely broke the row into a ragged 1 / 1 / 2. `sm:contents`
+              dissolves the grid again so the desktop strip stays a single row. */}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-4 sm:contents">
+            {groups.map((team) => (
+              <span key={team.code} className="flex items-center gap-2 sm:gap-3">
+                <img
+                  src={teamLogo(team)}
+                  alt=""
+                  className="size-11 shrink-0 object-contain object-center sm:size-14"
+                />
+                <span className="font-display text-xs font-bold leading-tight tracking-tight sm:text-sm">
+                  {team.name}
+                </span>
+              </span>
+            ))}
+          </div>
         </div>
       </section>
 
