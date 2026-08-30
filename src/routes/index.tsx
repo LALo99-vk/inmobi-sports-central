@@ -2,10 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowUpRight, CalendarDays, Clock, MapPin } from "lucide-react";
 
 import heroImg from "@/assets/hero.jpg";
-import mavericksLogo from "@/assets/teams/team-mavericks.png";
-import gladiatorsLogo from "@/assets/teams/team-gladiators.png";
-import raidersLogo from "@/assets/teams/team-raiders.png";
-import titansLogo from "@/assets/teams/team-titans.png";
+import { groups } from "@/data/tournaments";
+import { teamLogo } from "@/data/team-logos";
 import { getTournaments } from "@/lib/tournament-data";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
@@ -131,17 +129,19 @@ function Home() {
       <section className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-10 gap-y-4 px-5 py-5 sm:px-8">
           <span className="eyebrow text-muted-foreground">Four teams</span>
-          {[
-            { name: "Blue Moon Mavericks", logo: mavericksLogo },
-            { name: "Golden Gladiators", logo: gladiatorsLogo },
-            { name: "Red Raiders", logo: raidersLogo },
-            { name: "Teal Titans", logo: titansLogo },
-          ].map((t) => (
-            <span key={t.name} className="flex items-center gap-3">
-              <img src={t.logo} alt="" className="h-14 w-14 object-contain object-center" />
-              <span className="font-display text-sm font-bold tracking-tight">{t.name}</span>
+          {groups.map((team) => (
+            <span key={team.code} className="flex items-center gap-3">
+              <img src={teamLogo(team)} alt="" className="h-14 w-14 object-contain object-center" />
+              <span className="font-display text-sm font-bold tracking-tight">{team.name}</span>
             </span>
           ))}
+          <Link
+            to="/points-table"
+            className="ml-auto inline-flex items-center gap-1.5 border-b-2 border-accent pb-0.5 font-display text-sm font-bold uppercase tracking-[0.14em] transition-colors hover:text-accent"
+          >
+            Points table
+            <ArrowUpRight className="size-4" />
+          </Link>
         </div>
       </section>
 

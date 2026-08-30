@@ -34,6 +34,83 @@ export function getGroup(code: string | undefined | null) {
   return groups.find((g) => g.code === code);
 }
 
+/* ------------------------------------------------------------------ *
+ * Event-wide points table
+ * ------------------------------------------------------------------ */
+
+export type Medal = "gold" | "silver" | "bronze";
+
+/** The three places, in the order they are awarded and displayed. */
+export const MEDALS: Medal[] = ["gold", "silver", "bronze"];
+
+/** How much of a thing has been decided: none of it, some, or all. */
+export type ScoringStatus = "pending" | "partial" | "complete";
+
+/** One medal in one event: what it is worth, and who took it. */
+export type EventMedal = {
+  medal: Medal;
+  /** Read from the sheet rather than hardcoded, so their values always win. */
+  points: number;
+  /** Group code of the winning house. Undefined until the sheet names one. */
+  team?: string | undefined;
+};
+
+/**
+ * One of the 18 events — a whole sport for cricket, one category for badminton.
+ * This is the unit points are actually awarded in.
+ */
+export type EventResult = {
+  /** Sport as written in the sheet, e.g. "Table Tennis". */
+  sport: string;
+  /** "Open", "Men's Singles", "100 m". */
+  category: string;
+  medals: EventMedal[];
+  /** Points handed out so far — the medals that have a house against them. */
+  awarded: number;
+  /** Everything this event is worth: 50, 10 or 25. */
+  pool: number;
+  status: ScoringStatus;
+};
+
+/** One sport's contribution to the standings, and the events inside it. */
+export type SportPoints = {
+  sport: string;
+  /** Set when the sport matches a tournament, so the row can link to it. */
+  slug?: string | undefined;
+  /** 1 event for cricket, 5 for badminton, 2 for races. */
+  events: EventResult[];
+  /** Points per house, keyed by group code. Summed from the events. */
+  points: Record<string, number>;
+  awarded: number;
+  /** Always 50 — every sport carries equal weight. */
+  pool: number;
+  status: ScoringStatus;
+};
+
+/** Medals won by one house. The tiebreaker when points are level. */
+export type MedalCount = { gold: number; silver: number; bronze: number; total: number };
+
+/** The whole standings page in one object, ready to render. */
+export type PointsTable = {
+  sports: SportPoints[];
+  /** The four houses, in the order the Groups tab lists them. */
+  teams: Group[];
+  /** Points per house, keyed by group code — never a hand-typed total. */
+  totals: Record<string, number>;
+  /** Medal counts per house, keyed by group code. */
+  medals: Record<string, MedalCount>;
+  /** Points handed out across the whole carnival so far. */
+  awarded: number;
+  /** Everything in play: 450. */
+  pool: number;
+  /** Events with all three medals decided. */
+  eventsDecided: number;
+  /** 18, unless the sheet says otherwise. */
+  eventsTotal: number;
+  /** True once a Results tab was found and read. */
+  published: boolean;
+};
+
 export type BracketSlot = {
   /**
    * Team name (team sports), the player (singles) or both players (doubles).
@@ -560,6 +637,40 @@ export const tournaments: Tournament[] = [
       days: ["31 Aug", "02 Sep", "04 Sep", "08 Sep", "09 Sep"],
       times: EVENING_TIMES,
       courtLabel: "Board",
+    }),
+    gallery: [],
+    videos: [],
+  },
+  {
+    slug: "foosball",
+    sport: "Foosball",
+    name: "Rod Masters",
+    tagline: "Four rods. Two minds. No mercy.",
+    dates: "31 Aug – 09 Sep 2026",
+    day: "Mon – Fri",
+    time: "4:00 PM – 7:00 PM",
+    venue: "Cafeteria",
+    venueNote: "Ground Floor",
+    format: "Knockout · Doubles",
+    teams: "16 pairs",
+    image: indoorImg,
+    accent: "turf",
+    participants: "doubles",
+    about:
+      "Doubles foosball on two tables. First to five goals through the ladder, first to seven in the final. No spinning.",
+    info: [
+      { label: "Format", value: "First to 5 goals" },
+      { label: "Tables", value: "2 tables" },
+      { label: "Spinning", value: "Not allowed" },
+      { label: "Final", value: "First to 7" },
+    ],
+    rounds: buildLadder(pairs(3), {
+      completed: 1,
+      live: -1,
+      scoring: "goals",
+      days: ["31 Aug", "02 Sep", "04 Sep", "08 Sep", "09 Sep"],
+      times: EVENING_TIMES,
+      courtLabel: "Table",
     }),
     gallery: [],
     videos: [],

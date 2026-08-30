@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PointsTableRouteImport } from './routes/points-table'
 import { Route as TournamentsSlugRouteImport } from './routes/tournaments.$slug'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PointsTableRoute = PointsTableRouteImport.update({
+  id: '/points-table',
+  path: '/points-table',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TournamentsSlugRoute = TournamentsSlugRouteImport.update({
@@ -25,27 +31,31 @@ const TournamentsSlugRoute = TournamentsSlugRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/points-table': typeof PointsTableRoute
   '/tournaments/$slug': typeof TournamentsSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/points-table': typeof PointsTableRoute
   '/tournaments/$slug': typeof TournamentsSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/points-table': typeof PointsTableRoute
   '/tournaments/$slug': typeof TournamentsSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/tournaments/$slug'
+  fullPaths: '/' | '/points-table' | '/tournaments/$slug'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/tournaments/$slug'
-  id: '__root__' | '/' | '/tournaments/$slug'
+  to: '/' | '/points-table' | '/tournaments/$slug'
+  id: '__root__' | '/' | '/points-table' | '/tournaments/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  PointsTableRoute: typeof PointsTableRoute
   TournamentsSlugRoute: typeof TournamentsSlugRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/points-table': {
+      id: '/points-table'
+      path: '/points-table'
+      fullPath: '/points-table'
+      preLoaderRoute: typeof PointsTableRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/tournaments/$slug': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  PointsTableRoute: PointsTableRoute,
   TournamentsSlugRoute: TournamentsSlugRoute,
 }
 export const routeTree = rootRouteImport

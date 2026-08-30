@@ -9,13 +9,20 @@ export function SiteHeader() {
           <span className="h-4 w-px bg-border" />
           <span className="eyebrow text-muted-foreground">Sports Day 2026</span>
         </Link>
-        <nav className="flex items-center gap-6">
+        <nav className="flex items-center gap-5 sm:gap-6">
           <Link
             to="/"
             hash="tournaments"
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             Tournaments
+          </Link>
+          <Link
+            to="/points-table"
+            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            activeProps={{ className: "text-foreground" }}
+          >
+            Points Table
           </Link>
           <Link
             to="/"

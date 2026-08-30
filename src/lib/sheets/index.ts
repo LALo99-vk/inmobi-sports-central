@@ -5,7 +5,9 @@
  */
 import {
   tournaments as fallbackTournaments,
+  groups as fallbackGroups,
   type Group,
+  type PointsTable,
   type Tournament,
 } from "@/data/tournaments";
 import { fetchAllTabs, readSheetsConfig } from "./client";
@@ -17,6 +19,16 @@ import {
   type SheetGrid,
   type TournamentConfig,
 } from "./parse";
+import {
+  buildPointsTable,
+  emptyPointsTable,
+  parseLeaderboardTab,
+  parseResultsTab,
+  reconcile,
+  LEADERBOARD_TAB_NAMES,
+  POINTS_TAB_NAMES,
+  RESULTS_TAB_NAMES,
+} from "./points";
 import { loadFolderMedia } from "@/lib/drive";
 
 /** How long a fetched copy is served before we re-read the sheet. */
@@ -27,6 +39,8 @@ export type SheetSource = "sheet" | "cache" | "fallback";
 export type SheetData = {
   tournaments: Tournament[];
   groups: Group[] | null;
+  /** Event-wide standings for the points table page. */
+  points: PointsTable;
   warnings: ParseWarning[];
   source: SheetSource;
   /** Slugs whose matches came from the sheet rather than the sample data. */
@@ -37,10 +51,46 @@ export type SheetData = {
 };
 
 /** Tabs that hold configuration rather than a tournament's matches. */
-const RESERVED_TABS = new Set(["tournaments", "groups", "config", "settings", "readme"]);
+const RESERVED_TABS = new Set([
+  "tournaments",
+  "groups",
+  "config",
+  "settings",
+  "readme",
+  ...POINTS_TAB_NAMES,
+]);
+
+/** Reserved names are compared without spacing, so "POINTS TABLE" matches. */
+const isReservedTab = (title: string) =>
+  RESERVED_TABS.has(title.trim().toLowerCase()) ||
+  RESERVED_TABS.has(
+    title
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, ""),
+  );
 
 const findTab = (tabs: Record<string, SheetGrid>, name: string) =>
   Object.entries(tabs).find(([title]) => title.trim().toLowerCase() === name)?.[1];
+
+const normalizeTab = (title: string) =>
+  title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+/**
+ * Finds a tab by any of its accepted names. Names are matched in the order
+ * given, so `Results` always wins over the older `POINTS TABLE` stub even when
+ * both are in the sheet.
+ */
+const findNamedTab = (tabs: Record<string, SheetGrid>, names: string[]) => {
+  for (const name of names) {
+    const hit = Object.entries(tabs).find(([title]) => normalizeTab(title) === name);
+    if (hit?.[1]?.length) return { title: hit[0], grid: hit[1] };
+  }
+  return null;
+};
 
 /** "Table Tennis" -> "table-tennis", matching the route slugs. */
 const toSlug = (title: string) =>
@@ -102,6 +152,7 @@ function blankTournament(slug: string, config: TournamentConfig): Tournament {
 export function buildFromTabs(tabs: Record<string, SheetGrid>): {
   tournaments: Tournament[];
   groups: Group[] | null;
+  points: PointsTable;
   warnings: ParseWarning[];
   fromSheet: string[];
   configs: TournamentConfig[];
@@ -163,7 +214,92 @@ export function buildFromTabs(tabs: Record<string, SheetGrid>): {
     .map((config) => built.get(config.slug))
     .filter((t): t is Tournament => t !== undefined);
 
-  return { tournaments, groups, warnings, fromSheet, configs };
+  const teams = groups ?? fallbackGroups;
+  const points = buildPoints(tabs, teams, configs, warnings);
+
+  return { tournaments, groups, points, warnings, fromSheet, configs };
+}
+
+/**
+ * Builds the standings from the sheet.
+ *
+ * `Results` is the source of truth: 18 event rows naming who took each medal.
+ * Every sum on the page is computed from those rows, never read off the
+ * sheet's own totals. `LeaderBoard` is read afterwards only to check our
+ * arithmetic against theirs, and to borrow the order it lists the sports in.
+ *
+ * If the Results tab is ever missing we fall back to the LeaderBoard rollup,
+ * which gives points per sport but no medals and no event detail.
+ */
+function buildPoints(
+  tabs: Record<string, SheetGrid>,
+  teams: Group[],
+  configs: TournamentConfig[],
+  warnings: ParseWarning[],
+): PointsTable {
+  const leaderboardTab = findNamedTab(tabs, LEADERBOARD_TAB_NAMES);
+  const leaderboard = leaderboardTab ? parseLeaderboardTab(leaderboardTab.grid, teams) : null;
+
+  const resultsTab = findNamedTab(tabs, RESULTS_TAB_NAMES);
+  if (!resultsTab) {
+    if (leaderboardTab && !leaderboard) {
+      warnings.push({
+        tab: leaderboardTab.title,
+        row: null,
+        message:
+          "Couldn't read this tab as a points table — no row names the four " +
+          "houses. Add a Results tab for the full breakdown.",
+      });
+    }
+    return leaderboardFallback(leaderboard, teams, configs);
+  }
+
+  const parsed = parseResultsTab(resultsTab.grid, teams, resultsTab.title);
+  warnings.push(...parsed.warnings);
+
+  const order = leaderboard?.order;
+  const table = buildPointsTable(parsed.events, teams, configs, {
+    ...(order ? { order } : {}),
+  });
+  warnings.push(...reconcile(table, leaderboard, resultsTab.title));
+
+  return table;
+}
+
+/**
+ * Standings from the rollup tab alone: points per sport, but no medals and no
+ * events, because that tab simply doesn't carry them. Each sport becomes one
+ * synthetic event so the totals still add up the same way.
+ */
+function leaderboardFallback(
+  leaderboard: ReturnType<typeof parseLeaderboardTab>,
+  teams: Group[],
+  configs: TournamentConfig[],
+): PointsTable {
+  if (!leaderboard?.points.size) return emptyPointsTable(teams);
+
+  const events = leaderboard.order.map((sport) => {
+    const points = leaderboard.points.get(sport.toLowerCase().replace(/[^a-z0-9]/g, "")) ?? {};
+    // The rollup gives a house's total for the sport, not which medal earned
+    // it, so each house's points ride on a medal of their own.
+    const medals = Object.entries(points)
+      .filter(([, value]) => value > 0)
+      .map(([team, value]) => ({ medal: "gold" as const, points: value, team }));
+
+    return {
+      sport,
+      category: "",
+      medals,
+      awarded: medals.reduce((sum, medal) => sum + medal.points, 0),
+      pool: 50,
+      status: medals.length ? ("complete" as const) : ("pending" as const),
+    };
+  });
+
+  return buildPointsTable(events, teams, configs, {
+    order: leaderboard.order,
+    published: true,
+  });
 }
 
 /**
@@ -209,6 +345,7 @@ let inFlight: Promise<SheetData> | null = null;
 const emptyData = (error?: string): SheetData => ({
   tournaments: [],
   groups: null,
+  points: emptyPointsTable(fallbackGroups),
   warnings: [],
   source: "fallback",
   fromSheet: [],
@@ -226,13 +363,14 @@ async function readSheet(): Promise<SheetData> {
 
   try {
     const tabs = await fetchAllTabs(config);
-    const { tournaments, groups, warnings, fromSheet, configs } = buildFromTabs(tabs);
+    const { tournaments, groups, points, warnings, fromSheet, configs } = buildFromTabs(tabs);
     const withGalleries = await attachGalleries(tournaments, configs);
 
     // An empty result is a valid state (nothing published yet), not an error.
     const fresh: SheetData = {
       tournaments: withGalleries,
       groups,
+      points,
       warnings,
       source: "sheet",
       fromSheet,

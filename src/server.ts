@@ -53,6 +53,7 @@ let lastForcedRefresh = 0;
 const summarise = (data: Awaited<ReturnType<typeof loadSheetData>>) => ({
   tournaments: data.tournaments,
   groups: data.groups,
+  points: data.points,
   source: data.source,
   fromSheet: data.fromSheet,
   fetchedAt: data.fetchedAt,

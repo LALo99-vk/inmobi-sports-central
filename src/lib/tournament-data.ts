@@ -19,6 +19,18 @@ export const getTournaments = createServerFn({ method: "GET" }).handler(async ()
 });
 
 /**
+ * The event-wide standings: every sport's points for all four house teams.
+ */
+export const getPointsTable = createServerFn({ method: "GET" }).handler(async () => {
+  const data = await loadSheetData();
+  return {
+    points: data.points,
+    source: data.source,
+    fetchedAt: data.fetchedAt,
+  };
+});
+
+/**
  * Diagnostics for the business team: what the sheet looked like on the last
  * read and every row the parser couldn't understand.
  */
