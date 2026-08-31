@@ -346,47 +346,74 @@ function VideoCard({ video, feature }: { video: Tournament["videos"][number]; fe
   );
 }
 
+/**
+ * The referees' rulebook for this sport, boiled down to a line per topic.
+ * Rendered only when the tournament actually has one, so sports without a
+ * rulebook show nothing rather than borrowed rules from another game.
+ */
+function Rules({ rules }: { rules: NonNullable<Tournament["rules"]> }) {
+  return (
+    <section className="mt-16 border-t border-border pt-12">
+      <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Rules</h2>
+      <p className="mt-5 text-sm text-muted-foreground">
+        A short summary of the official tournament rules.
+      </p>
+      <dl className="mt-10 grid gap-x-12 gap-y-6 sm:grid-cols-2">
+        {rules.map((rule) => (
+          <div key={rule.section} className="border-t border-border pt-4">
+            <dt className="eyebrow text-muted-foreground">{rule.section}</dt>
+            <dd className="mt-2 text-sm leading-relaxed">{rule.text}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 function Details({ t }: { t: Tournament }) {
   return (
-    <section className="grid gap-12 lg:grid-cols-[1.4fr_1fr] lg:gap-20">
-      <div>
-        <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">
-          About the tournament
-        </h2>
-        <p className="mt-5 text-lg leading-relaxed text-muted-foreground">{t.about}</p>
-        <dl className="mt-10 grid gap-x-10 gap-y-6 sm:grid-cols-2">
-          {t.info.map((row) => (
-            <div key={row.label} className="border-t border-border pt-4">
-              <dt className="eyebrow text-muted-foreground">{row.label}</dt>
-              <dd className="mt-1.5 font-display text-lg font-bold">{row.value}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-      <aside className="h-fit border-t-2 border-accent bg-surface p-6 sm:p-8">
-        <p className="eyebrow text-muted-foreground">At a glance</p>
-        <dl className="mt-6 space-y-5 text-sm">
-          {[
-            ["Format", t.format],
-            ["Field", t.teams],
-            ["Days", t.day],
-            ["Time", t.time],
-            ["Venue", `${t.venue}, ${t.venueNote}`],
-          ].map(([k, v]) => (
-            <div
-              key={k}
-              className="flex gap-4 border-b border-border/70 pb-4 last:border-0 last:pb-0"
-            >
-              <dt className="w-20 shrink-0 text-muted-foreground">{k}</dt>
-              <dd className="font-medium">{v}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-7 flex items-center gap-2 text-sm text-muted-foreground">
-          <Trophy className="size-4 text-accent" /> Winner announced at the closing ceremony.
-        </p>
-      </aside>
-    </section>
+    <>
+      <section className="grid gap-12 lg:grid-cols-[1.4fr_1fr] lg:gap-20">
+        <div>
+          <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">
+            About the tournament
+          </h2>
+          <p className="mt-5 text-lg leading-relaxed text-muted-foreground">{t.about}</p>
+          <dl className="mt-10 grid gap-x-10 gap-y-6 sm:grid-cols-2">
+            {t.info.map((row) => (
+              <div key={row.label} className="border-t border-border pt-4">
+                <dt className="eyebrow text-muted-foreground">{row.label}</dt>
+                <dd className="mt-1.5 font-display text-lg font-bold">{row.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <aside className="h-fit border-t-2 border-accent bg-surface p-6 sm:p-8">
+          <p className="eyebrow text-muted-foreground">At a glance</p>
+          <dl className="mt-6 space-y-5 text-sm">
+            {[
+              ["Format", t.format],
+              ["Field", t.teams],
+              ["Days", t.day],
+              ["Time", t.time],
+              ["Venue", `${t.venue}, ${t.venueNote}`],
+            ].map(([k, v]) => (
+              <div
+                key={k}
+                className="flex gap-4 border-b border-border/70 pb-4 last:border-0 last:pb-0"
+              >
+                <dt className="w-20 shrink-0 text-muted-foreground">{k}</dt>
+                <dd className="font-medium">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-7 flex items-center gap-2 text-sm text-muted-foreground">
+            <Trophy className="size-4 text-accent" /> Winner announced at the closing ceremony.
+          </p>
+        </aside>
+      </section>
+      {t.rules?.length ? <Rules rules={t.rules} /> : null}
+    </>
   );
 }
 

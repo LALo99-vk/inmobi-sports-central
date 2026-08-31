@@ -6,7 +6,9 @@
 import {
   tournaments as fallbackTournaments,
   groups as fallbackGroups,
+  type BracketRound,
   type Group,
+  type ParticipantKind,
   type PointsTable,
   type Tournament,
 } from "@/data/tournaments";
@@ -118,6 +120,79 @@ function applyConfig(base: Tournament, config: TournamentConfig): Tournament {
   };
 }
 
+/** The play-off round that hangs off the ladder rather than feeding it. */
+const THIRD_PLACE = "Third Place";
+
+/**
+ * Facts the draw can answer for itself: how many are entered, how many rounds
+ * they play, and how many boards run in parallel.
+ *
+ * The sample data these pages fall back to hardcodes all three, which goes
+ * stale the moment the sheet changes — an 83-player chess draw was still
+ * advertising a field of 16. Reading them off the parsed rounds keeps the panel
+ * honest without adding yet another column for the business team to maintain.
+ */
+function derivedFacts(rounds: BracketRound[]) {
+  const players = new Set<string>();
+  const sides = new Set<string>();
+  const courts = new Set<string>();
+
+  // A third-place play-off is an extra fixture, not a step towards the title:
+  // an 83-player draw runs 64 -> 32 -> 16 -> 8 -> 4 -> 2 -> 1, seven rounds,
+  // and counting the play-off would advertise an eighth that nobody plays
+  // on the way to winning.
+  const ladder = rounds.filter((round) => round.name !== THIRD_PLACE);
+
+  for (const round of rounds) {
+    for (const match of round.matches) {
+      if (match.court) courts.add(match.court);
+      for (const slot of [match.a, match.b]) {
+        if (!slot.players?.length) continue;
+        const names = slot.players.map((player) => player.trim().toLowerCase());
+        names.forEach((name) => players.add(name));
+        // A pair is one entrant however the sheet ordered the two names.
+        sides.add([...names].sort().join(" & "));
+      }
+    }
+  }
+
+  return { players: players.size, sides: sides.size, rounds: ladder.length, courts: courts.size };
+}
+
+/** "83 players", "50 pairs", "16 teams" — whichever the sport actually fields. */
+function fieldLabel(kind: ParticipantKind, facts: ReturnType<typeof derivedFacts>) {
+  if (kind === "doubles") return `${facts.sides} pairs`;
+  if (kind === "team") return `${facts.sides} teams`;
+  return `${facts.players} players`;
+}
+
+const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+
+/**
+ * Rewrites the "at a glance" figures the draw can verify, leaving every other
+ * tile (time control, draw rule) exactly as the sample data wrote it — those
+ * have no source in the sheet, so we must not invent them.
+ */
+function applyFacts(
+  base: Tournament,
+  rounds: BracketRound[],
+  courtLabel: string | undefined,
+): Tournament {
+  const facts = derivedFacts(rounds);
+  const surface = (courtLabel ?? base.courtLabel ?? "Board").trim().toLowerCase();
+
+  const info = base.info.map((tile) => {
+    const label = tile.label.trim().toLowerCase();
+    if (label === "rounds") return { ...tile, value: plural(facts.rounds, "knockout round") };
+    if (facts.courts > 0 && label === `${surface}s`) {
+      return { ...tile, value: plural(facts.courts, surface) };
+    }
+    return tile;
+  });
+
+  return { ...base, teams: fieldLabel(base.participants, facts), info };
+}
+
 /**
  * A sport the sheet knows about but the code has never seen. Borrows the
  * artwork from the sample data so the page still renders; gallery and videos
@@ -205,7 +280,8 @@ export function buildFromTabs(tabs: Record<string, SheetGrid>): {
     const template = fallbackTournaments.find((t) => t.slug === config.slug);
     const base = template ? applyConfig(template, config) : blankTournament(config.slug, config);
 
-    built.set(config.slug, { ...base, rounds, ...(courtLabel ? { courtLabel } : {}) });
+    const withFacts = applyFacts(base, rounds, courtLabel);
+    built.set(config.slug, { ...withFacts, rounds, ...(courtLabel ? { courtLabel } : {}) });
     fromSheet.push(config.slug);
   }
 

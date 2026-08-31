@@ -166,6 +166,12 @@ export type Tournament = {
   courtLabel?: string | undefined;
   about: string;
   info: { label: string; value: string }[];
+  /**
+   * Plain-language house rules, straight from the referees' rulebook issued for
+   * this tournament. Only present for sports that have one — the rest render no
+   * rules section rather than an invented one.
+   */
+  rules?: { section: string; text: string }[];
   rounds: BracketRound[];
   gallery: { src: string; caption: string }[];
   videos: { id: string; title: string; duration: string; meta: string; shared: boolean }[];
@@ -591,10 +597,29 @@ export const tournaments: Tournament[] = [
     about:
       "Rapid knockout chess. Ten minutes per side with a five-second increment; a single blitz game decides any drawn pairing.",
     info: [
-      { label: "Time control", value: "10 min + 5 sec" },
+      // Organisers' ruling: 5 min for league matches, 10 min for knockout.
+      // This draw is knockout throughout, so 10 applies.
+      { label: "Time control", value: "10 min · knockout" },
       { label: "Rounds", value: "5 knockout rounds" },
-      { label: "Draw rule", value: "Blitz decider" },
       { label: "Boards", value: "8 boards" },
+    ],
+    rules: [
+      {
+        section: "Castling",
+        text: "The King moves two squares toward a Rook that has not moved, and that Rook hops across \u2014 only with the squares between them empty, and never out of, through, or into check.",
+      },
+      {
+        section: "En passant",
+        text: "A pawn that advances two squares and lands alongside an enemy pawn may be captured in passing, on the very next turn only.",
+      },
+      {
+        section: "Promotion",
+        text: "A pawn reaching the far rank must be promoted to a Queen, Rook, Bishop or Knight of its own colour, whether or not that piece has been captured.",
+      },
+      {
+        section: "Draws",
+        text: "A game is drawn by stalemate, insufficient material, threefold repetition, the fifty-move rule, or mutual agreement.",
+      },
     ],
     rounds: buildLadder(singlesPlayers, {
       completed: 2,
@@ -623,12 +648,43 @@ export const tournaments: Tournament[] = [
     accent: "ember",
     participants: "doubles",
     about:
-      "Doubles carrom on four boards. First to 21 points or two boards, with the queen to be covered as per standard rules.",
+      "Doubles carrom played as a straight knockout. Partners play alternately, a toss decides the first break, and a team wins the board by clearing all its carrom men and covering the Queen.",
     info: [
-      { label: "Format", value: "First to 21 points" },
+      // Board count is rewritten from the draw; see applyFacts in lib/sheets.
       { label: "Boards", value: "4 boards" },
       { label: "Queen", value: "Must be covered" },
-      { label: "Break", value: "Alternating" },
+      // The toss winner breaks; it is the turns that alternate, not the break.
+      { label: "Break", value: "Toss decides" },
+    ],
+    rules: [
+      {
+        section: "Format",
+        text: "Doubles, two players a side, partners playing alternately with their registered teammate.",
+      },
+      {
+        section: "Starting",
+        text: "A toss decides which team starts, and the winner takes the first break.",
+      },
+      {
+        section: "Scoring",
+        text: "Your own carrom man is 1 point, the covered Queen 3, and a foul costs you 1.",
+      },
+      {
+        section: "The Queen",
+        text: "Either side may pocket the Queen, but it must be covered with your own man straight after \u2014 uncovered, it goes back to the centre.",
+      },
+      {
+        section: "Winning",
+        text: "Clear all your carrom men and cover the Queen. Where points decide it the higher score wins, and a tie goes to a tie-breaker set by the officials.",
+      },
+      {
+        section: "Fouls",
+        text: "Pocketing the striker, touching the men by hand, playing from outside the baseline area or disturbing the board \u2014 one point off each time.",
+      },
+      {
+        section: "On the day",
+        text: "Report to your board five minutes early. Up to five minutes\u2019 grace is allowed, after which the match may be given as a walkover, and no outside coaching is permitted.",
+      },
     ],
     rounds: buildLadder(pairs(7), {
       completed: 1,
