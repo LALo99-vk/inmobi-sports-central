@@ -125,8 +125,17 @@ export type DriveFile = {
   id: string;
   name: string;
   mimeType: string;
-  /** Only present on videos, and only once Drive has finished processing. */
-  videoMediaMetadata?: { durationMillis?: string };
+  /**
+   * Only present on videos, and only once Drive has finished processing.
+   * Drive types the duration as an int64, so it arrives as a string, while the
+   * dimensions arrive as numbers — read both through Number() and don't trust
+   * either to be there.
+   */
+  videoMediaMetadata?: {
+    durationMillis?: string;
+    width?: number | string;
+    height?: number | string;
+  };
 };
 
 async function apiError(response: Response, config: DriveConfig): Promise<Error> {
@@ -169,7 +178,8 @@ export async function listFolderMedia(config: DriveConfig, folderId: string): Pr
         `'${folderId.replace(/'/g, "\\'")}' in parents and ` +
         `(mimeType contains 'image/' or mimeType contains 'video/') and trashed = false`,
       fields:
-        "nextPageToken, files(id, name, mimeType, createdTime, videoMediaMetadata(durationMillis))",
+        "nextPageToken, files(id, name, mimeType, createdTime, " +
+        "videoMediaMetadata(durationMillis, width, height))",
       orderBy: "createdTime desc",
       pageSize: "200",
       supportsAllDrives: "true",
@@ -188,6 +198,44 @@ export async function listFolderMedia(config: DriveConfig, folderId: string): Pr
   } while (pageToken);
 
   return files;
+}
+
+/**
+ * A video's poster frame, proxied rather than hotlinked.
+ *
+ * The obvious `drive.google.com/thumbnail?id=…` endpoint only answers for a
+ * file anyone with the link can open, and it answers to the visitor's browser
+ * rather than to us — so a poster silently breaks the moment sharing changes or
+ * Google decides not to serve it. `thumbnailLink` is the authorised route to
+ * the same image: short-lived and tied to this caller, so it is resolved and
+ * followed here, and the bytes go out through our own proxy like the photos.
+ */
+export async function fetchFileThumbnail(
+  config: DriveConfig,
+  fileId: string,
+  width = 1280,
+): Promise<{ body: ReadableStream<Uint8Array> | null; contentType: string }> {
+  const token = await getAccessToken(config);
+
+  const lookup = await fetch(
+    `${DRIVE_API}/files/${encodeURIComponent(fileId)}?fields=thumbnailLink&supportsAllDrives=true`,
+    { headers: { authorization: `Bearer ${token}` } },
+  );
+  if (!lookup.ok) throw await apiError(lookup, config);
+
+  const { thumbnailLink } = (await lookup.json()) as { thumbnailLink?: string };
+  // Drive only generates one once it has finished processing the upload.
+  if (!thumbnailLink) throw new Error(`No thumbnail for ${fileId} yet.`);
+
+  // The size lives in the suffix — Drive's default "=s220" is a postage stamp.
+  const sized = thumbnailLink.replace(/=[^=/]*$/, `=w${width}`);
+  const image = await fetch(sized, { headers: { authorization: `Bearer ${token}` } });
+  if (!image.ok) throw new Error(`Thumbnail fetch failed with ${image.status}.`);
+
+  return {
+    body: image.body,
+    contentType: image.headers.get("content-type") ?? "image/jpeg",
+  };
 }
 
 /** Streams a single file's bytes — used by the `/api/drive-image/:id` proxy. */

@@ -1,6 +1,6 @@
 import "./lib/error-capture";
 
-import { fetchFileMedia, readDriveConfig } from "./lib/drive";
+import { fetchFileMedia, fetchFileThumbnail, readDriveConfig } from "./lib/drive";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 import { loadSheetData } from "./lib/sheets";
@@ -129,6 +129,32 @@ async function handleApi(request: Request): Promise<Response | null> {
     } catch (error) {
       console.error("[drive] image proxy failed:", error);
       return json({ error: "Image not found" }, "no-store", 404);
+    }
+  }
+
+  if (pathname.startsWith("/api/drive-thumb/")) {
+    const fileId = pathname.slice("/api/drive-thumb/".length);
+    if (!/^[a-zA-Z0-9_-]+$/.test(fileId)) {
+      return json({ error: "Invalid file id" }, "no-store", 400);
+    }
+
+    const config = readDriveConfig();
+    if (!config) return json({ error: "Drive not configured" }, "no-store", 404);
+
+    try {
+      const { body, contentType } = await fetchFileThumbnail(config, fileId);
+      return new Response(body, {
+        status: 200,
+        headers: {
+          "content-type": contentType,
+          "cache-control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch (error) {
+      console.error("[drive] thumbnail proxy failed:", error);
+      // Drive hasn't finished processing a fresh upload yet, most likely. Say
+      // so briefly rather than caching a miss for a year.
+      return json({ error: "Thumbnail not available" }, "no-store", 404);
     }
   }
 

@@ -181,7 +181,16 @@ export type Tournament = {
   rules?: { section: string; text: string }[];
   rounds: BracketRound[];
   gallery: { src: string; caption: string }[];
-  videos: { id: string; title: string; duration: string; meta: string; shared: boolean }[];
+  videos: {
+    id: string;
+    title: string;
+    duration: string;
+    /** Width over height — the card takes the clip's own shape. */
+    aspect: number;
+    poster: string;
+    meta: string;
+    shared: boolean;
+  }[];
 };
 
 const teamNames = ["Blue Moon Mavericks", "Golden Gladiators", "Red Raiders", "Teal Titans"];

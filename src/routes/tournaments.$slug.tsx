@@ -17,6 +17,7 @@ import type { Tournament } from "@/data/tournaments";
 import { Bracket } from "@/components/bracket";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { SportMotif } from "@/components/sport-motif";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/tournaments/$slug")({
@@ -184,7 +185,9 @@ function TournamentPage() {
                   >
                     <img
                       src={g.src}
-                      alt={g.caption}
+                      // The only caption we have is the Drive filename, which
+                      // describes nothing — better silence than "chess3".
+                      alt=""
                       loading="lazy"
                       width={1280}
                       height={960}
@@ -193,9 +196,6 @@ function TournamentPage() {
                         i === 0 ? "h-72 sm:h-[33rem]" : "h-56",
                       )}
                     />
-                    <figcaption className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4 text-sm font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-                      {g.caption}
-                    </figcaption>
                   </figure>
                 ))}
               </div>
@@ -212,9 +212,9 @@ function TournamentPage() {
                 <p className="text-sm text-muted-foreground">Check back soon.</p>
               </div>
             ) : (
-              <div className="mt-10 grid gap-8 lg:grid-cols-2">
-                {t.videos.map((v, i) => (
-                  <VideoCard key={v.id} video={v} feature={i === 0} />
+              <div className="mt-10 grid grid-cols-2 items-start gap-x-5 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {t.videos.map((v) => (
+                  <VideoCard key={v.id} video={v} />
                 ))}
               </div>
             )}
@@ -279,69 +279,108 @@ function RefreshButton({ fetchedAt }: { fetchedAt: number }) {
 /**
  * A Drive video.
  *
- * The poster is only a picture until someone presses play — then it is swapped
- * for Drive's own player. Mounting an iframe per video up front would pull in
- * Google's whole player for every clip on the page, so the click is what pays
- * for it.
+ * The card is a poster and nothing else until someone presses play — then the
+ * clip opens in a lightbox rather than inside the grid cell. Playing in place
+ * is what forced every card to be big enough to watch in; with the player
+ * lifted out, the shelf can be sized for scanning and the video gets the room
+ * it actually needs.
  *
- * Both the poster and the player load straight from Google in the visitor's
- * browser, so unlike the photos these files must be shared "anyone with the
- * link". When they are not, the thumbnail 404s and we say so plainly rather
- * than leaving a black box.
+ * The poster comes through our own proxy, so it needs nothing more than the
+ * folder being shared with the reader account. The player is still Drive's own
+ * iframe, which loads in the visitor's browser and so does need the file itself
+ * to be "anyone with the link" — when it isn't, we say so on the card.
  */
-function VideoCard({ video, feature }: { video: Tournament["videos"][number]; feature: boolean }) {
-  const [playing, setPlaying] = useState(false);
-  const height = feature ? "h-64 sm:h-[26rem]" : "h-56";
+function VideoCard({ video }: { video: Tournament["videos"][number] }) {
+  const [open, setOpen] = useState(false);
+  // Drive reports the encoded dimensions, and a phone clip can be stored
+  // landscape with the rotation held separately — so the poster, which Drive
+  // renders the right way up, gets the last word once it has actually loaded.
+  const [aspect, setAspect] = useState(video.aspect);
+
+  const frame = "relative w-full overflow-hidden rounded-xl bg-primary ring-1 ring-border/70";
 
   return (
-    <article className={cn(feature && "lg:col-span-2")}>
-      <div className={cn("group relative overflow-hidden rounded-md bg-primary", height)}>
-        {playing ? (
-          <iframe
-            src={`https://drive.google.com/file/d/${video.id}/preview`}
-            title={video.title}
-            allow="autoplay; fullscreen"
-            allowFullScreen
-            className="size-full"
+    <article className="group">
+      {video.shared ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          style={{ aspectRatio: aspect }}
+          className={cn(
+            frame,
+            "cursor-pointer transition duration-300",
+            "hover:-translate-y-0.5 hover:shadow-[0_16px_34px_-18px_rgba(20,20,50,0.55)] hover:ring-accent/60",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+          )}
+          aria-label={`Play ${video.title}`}
+        >
+          <img
+            src={video.poster}
+            alt=""
+            loading="lazy"
+            onLoad={(event) => {
+              const { naturalWidth, naturalHeight } = event.currentTarget;
+              if (naturalWidth > 0 && naturalHeight > 0) {
+                setAspect(naturalWidth / naturalHeight);
+              }
+            }}
+            className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           />
-        ) : !video.shared ? (
-          <div className="flex size-full flex-col items-center justify-center gap-2 px-6 text-center">
-            <Play className="size-7 text-primary-foreground/40" />
-            <p className="font-display text-sm font-bold text-primary-foreground/90">
-              This video isn&rsquo;t shared yet
-            </p>
-            <p className="text-xs text-primary-foreground/60">
-              In Drive, set it to &ldquo;Anyone with the link&rdquo; and it will play here.
-            </p>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setPlaying(true)}
-            className="size-full"
-            aria-label={`Play ${video.title}`}
-          >
-            <img
-              src={`https://drive.google.com/thumbnail?id=${video.id}&sz=w1280`}
-              alt=""
-              loading="lazy"
-              className="size-full object-cover opacity-80 transition-all duration-700 group-hover:scale-[1.02] group-hover:opacity-70"
-            />
-            <span className="absolute inset-0 flex items-center justify-center">
-              <span className="flex size-16 items-center justify-center rounded-full bg-accent text-accent-foreground transition-transform group-hover:scale-105">
-                <Play className="size-6 translate-x-0.5 fill-current" />
-              </span>
+          {/* A scrim only where the controls sit, so the frame keeps its colour. */}
+          <span
+            aria-hidden
+            className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/60 to-transparent"
+          />
+          <span className="absolute inset-0 flex items-center justify-center">
+            <span className="flex size-11 items-center justify-center rounded-full bg-white/15 ring-1 ring-white/50 backdrop-blur-sm transition-all duration-300 group-hover:scale-110 group-hover:bg-accent group-hover:ring-accent">
+              <Play className="size-4 translate-x-px fill-white text-white" />
             </span>
-            {video.duration && (
-              <span className="absolute bottom-3 right-3 rounded bg-black/65 px-2 py-0.5 text-xs font-medium tabular-nums text-white">
-                {video.duration}
-              </span>
+          </span>
+          {video.duration && (
+            <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-[0.68rem] font-medium tabular-nums text-white">
+              {video.duration}
+            </span>
+          )}
+        </button>
+      ) : (
+        <div
+          style={{ aspectRatio: aspect }}
+          className={cn(
+            frame,
+            "flex flex-col items-center justify-center gap-1.5 px-4 text-center",
+          )}
+        >
+          <Play className="size-5 text-primary-foreground/40" />
+          <p className="font-display text-xs font-bold text-primary-foreground/90">
+            Not shared yet
+          </p>
+          <p className="text-[0.68rem] leading-snug text-primary-foreground/60">
+            Set it to &ldquo;Anyone with the link&rdquo; in Drive.
+          </p>
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="w-auto max-w-none border-0 bg-transparent p-0 text-white shadow-none">
+          <DialogTitle className="sr-only">{video.title}</DialogTitle>
+          {/* Width is capped by the viewport on both axes at once, so the clip
+              fills the frame exactly and never letterboxes inside it. */}
+          <div
+            className="overflow-hidden rounded-xl bg-black"
+            style={{ width: `min(92vw, ${(aspect * 82).toFixed(2)}vh)`, aspectRatio: aspect }}
+          >
+            {open && (
+              <iframe
+                src={`https://drive.google.com/file/d/${video.id}/preview`}
+                title={video.title}
+                allow="autoplay; fullscreen"
+                allowFullScreen
+                className="size-full"
+              />
             )}
-          </button>
-        )}
-      </div>
-      <h3 className="mt-4 font-display text-lg font-bold">{video.title}</h3>
-      {video.meta && <p className="text-sm text-muted-foreground">{video.meta}</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
     </article>
   );
 }

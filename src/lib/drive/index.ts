@@ -5,7 +5,13 @@
  *
  * Never throws — if a folder is unreachable the caller keeps whatever it had.
  */
-import { fetchFileMedia, listFolderMedia, readDriveConfig, type DriveFile } from "./client";
+import {
+  fetchFileMedia,
+  fetchFileThumbnail,
+  listFolderMedia,
+  readDriveConfig,
+  type DriveFile,
+} from "./client";
 
 export type GalleryItem = { src: string; caption: string };
 
@@ -15,6 +21,14 @@ export type VideoItem = {
   title: string;
   /** "1:42", or empty while Drive is still processing the upload. */
   duration: string;
+  /**
+   * Width over height, so the card can be given the shape the clip actually is.
+   * Everything here is filmed on a phone and most of it is portrait; pouring
+   * that into a 16:9 box is what produces the black pillars either side.
+   */
+  aspect: number;
+  /** Poster frame, through our own proxy — see `fetchFileThumbnail`. */
+  poster: string;
   meta: string;
   /**
    * Whether a visitor can actually watch it. Photos come through our own proxy
@@ -35,6 +49,20 @@ const cache = new Map<string, { media: FolderMedia; fetchedAt: number }>();
 const inFlight = new Map<string, Promise<FolderMedia>>();
 
 const stripExtension = (name: string) => name.replace(/\.[a-z0-9]+$/i, "");
+
+/**
+ * Width over height. Falls back to 16:9 rather than guessing: an unknown shape
+ * drawn wide is the layout we already had, while an unknown shape drawn tall
+ * would be a new way to be wrong.
+ */
+function aspectOf(meta: DriveFile["videoMediaMetadata"]): number {
+  const width = Number(meta?.width);
+  const height = Number(meta?.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return 16 / 9;
+  }
+  return width / height;
+}
 
 /** 102000 -> "1:42". Empty when Drive hasn't reported a duration yet. */
 function formatDuration(millis: string | undefined): string {
@@ -76,6 +104,8 @@ function split(files: DriveFile[]): FolderMedia {
         id: file.id,
         title,
         duration: formatDuration(file.videoMediaMetadata?.durationMillis),
+        aspect: aspectOf(file.videoMediaMetadata),
+        poster: `/api/drive-thumb/${file.id}`,
         meta: "",
         shared: false, // filled in below
       });
@@ -131,4 +161,4 @@ export async function loadFolderMedia(
   return promise;
 }
 
-export { fetchFileMedia, readDriveConfig };
+export { fetchFileMedia, fetchFileThumbnail, readDriveConfig };
