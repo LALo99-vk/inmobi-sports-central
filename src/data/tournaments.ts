@@ -5,7 +5,14 @@ import indoorImg from "@/assets/g-indoor.jpg";
 import raceImg from "@/assets/g-race.jpg";
 import ttImg from "@/assets/g-tt.jpg";
 
-export type MatchStatus = "upcoming" | "live" | "completed";
+/**
+ * "cancelled" and "noshow" both mean the fixture was not played out. They stay
+ * distinct because the reason is what the desk gets asked about: a cancelled
+ * match may be rescheduled, a no-show usually hands the tie to whoever turned
+ * up. Either may still carry a winner — that is a walkover, and the winner
+ * advances exactly as they would from a played match.
+ */
+export type MatchStatus = "upcoming" | "live" | "completed" | "cancelled" | "noshow";
 
 /** How participants are shown in the bracket. */
 export type ParticipantKind = "team" | "singles" | "doubles";

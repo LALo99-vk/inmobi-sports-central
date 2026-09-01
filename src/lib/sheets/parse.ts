@@ -263,8 +263,51 @@ function normalizeStatus(value: string): MatchStatus | null {
   if (["upcoming", "scheduled", "notstarted", "pending", "yettostart"].includes(key)) {
     return "upcoming";
   }
+  // Called off before anyone played. The desk needs this because the only way
+  // to record it until now was to empty the row, which broke the ladder.
+  if (
+    [
+      "cancelled",
+      "canceled",
+      "cancel",
+      "matchcancelled",
+      "matchcanceled",
+      "calledoff",
+      "abandoned",
+      "notplayed",
+      "scratched",
+      "void",
+    ].includes(key)
+  ) {
+    return "cancelled";
+  }
+  // Somebody didn't turn up. Put whoever did in the Winner column and they go
+  // through on a walkover; leave it empty and the tie simply stops here.
+  if (
+    [
+      "noshow",
+      "noshows",
+      "noshowed",
+      "didnotshow",
+      "didntshow",
+      "playerdidnotshow",
+      "playersdidnotshow",
+      "absent",
+      "dns",
+      "walkover",
+      "wo",
+      "forfeit",
+      "forfeited",
+    ].includes(key)
+  ) {
+    return "noshow";
+  }
   return null;
 }
+
+/** True for a fixture that was never played out, however it is labelled. */
+export const isStoppedStatus = (status: MatchStatus) =>
+  status === "cancelled" || status === "noshow";
 
 /* ------------------------------------------------------------------ *
  * Match rows
@@ -412,15 +455,53 @@ export function parseMatchTab(
     });
   }
 
-  /** Every way a side might legitimately be named in the Winner column. */
+  /** Just the names typed into this row — nothing followed back up the ladder. */
+  function namedKeys(players: string[]): string[] {
+    const keys = players.map((player) => normalizeHeader(player)).filter(Boolean);
+    if (keys.length > 1) keys.push(normalizeHeader(players.join("")));
+    return keys;
+  }
+
+  /**
+   * Every way a side might legitimately be named in the Winner column.
+   *
+   * A slot reading "Winner of Match 20" has no names of its own, so matching on
+   * this row alone can never succeed — the desk types the player who actually
+   * won and the site insists neither side is called that. Follow the reference
+   * to whoever is standing in the slot and match against them too.
+   */
   function sideKeys(side: RawSide): string[] {
-    const keys = side.players.map((player) => normalizeHeader(player)).filter(Boolean);
-    if (keys.length > 1) keys.push(normalizeHeader(side.players.join("")));
+    const players = side.players.length ? side.players : (resolve(side, new Set())?.players ?? []);
+    const keys = namedKeys(players);
     if (side.group) keys.push(normalizeHeader(side.group));
     return keys;
   }
 
+  /** The Winner cell, cleaned every way a participant cell would be. */
+  function winnerCandidates(value: string): Set<string> {
+    // The Winner column is usually pasted from the Team column, so it may still
+    // carry the "(RR)" tags — clean it exactly like a participant cell.
+    const cleaned = splitPlayers(value)
+      .map((player) => extractGroupTag(player).name)
+      .filter(Boolean);
+    return new Set(
+      [
+        normalizeHeader(value),
+        normalizeHeader(cleaned.join("")),
+        ...cleaned.map(normalizeHeader),
+      ].filter(Boolean),
+    );
+  }
+
   const winnerCache = new Map<number, 0 | 1 | null>();
+  /** Matches already complained about, so clearing the cache can't double up. */
+  const warned = new Set<number>();
+  /**
+   * The linking and inference passes below both ask for winners while the
+   * ladder is still half-built, and a match they are about to fix would report
+   * itself broken on the way past. Stay quiet until they have finished.
+   */
+  let reportUnmatchedWinners = false;
 
   /** Which side won, or null while undecided. Memoised so warnings fire once. */
   function winnerOf(match: RawMatch): 0 | 1 | null {
@@ -449,28 +530,20 @@ export function parseMatchTab(
     if (value === "1" || normalizeHeader(value) === "team1") return 0;
     if (value === "2" || normalizeHeader(value) === "team2") return 1;
 
-    // The Winner column is usually pasted from the Team column, so it may still
-    // carry the "(RR)" tags — clean it exactly like a participant cell.
-    const cleaned = splitPlayers(value)
-      .map((player) => extractGroupTag(player).name)
-      .filter(Boolean);
-    const candidates = new Set(
-      [
-        normalizeHeader(value),
-        normalizeHeader(cleaned.join("")),
-        ...cleaned.map(normalizeHeader),
-      ].filter(Boolean),
-    );
+    const candidates = winnerCandidates(value);
 
     for (const index of [0, 1] as const) {
       if (sideKeys(match.sides[index]).some((key) => candidates.has(key))) return index;
     }
 
-    warnings.push({
-      tab,
-      row: null,
-      message: `Match ${match.matchNumber}: winner "${value}" doesn't match either side.`,
-    });
+    if (reportUnmatchedWinners && !warned.has(match.matchNumber)) {
+      warned.add(match.matchNumber);
+      warnings.push({
+        tab,
+        row: null,
+        message: `Match ${match.matchNumber}: winner "${value}" doesn't match either side.`,
+      });
+    }
     return null;
   }
 
@@ -515,7 +588,88 @@ export function parseMatchTab(
     }
   }
 
+  /**
+   * Every route back from `start` that arrives at somebody the Winner cell
+   * could be naming, as the list of matches they'd have had to win to get here.
+   *
+   * Stops at the first row that names them outright: past that point the sheet
+   * is telling us where they came from, not who they beat.
+   */
+  function routesTo(
+    start: number,
+    candidates: Set<string>,
+    seen: Set<number>,
+    path: number[],
+    out: number[][],
+  ) {
+    if (seen.has(start)) return;
+    seen.add(start);
+    const match = byNumber.get(start);
+    if (!match) return;
+
+    const here = [...path, start];
+    // Only names actually typed into this row count as finding the player;
+    // matching a resolved occupant would report a hit at every level and the
+    // chain of wins would be meaningless.
+    if (match.sides.some((side) => namedKeys(side.players).some((key) => candidates.has(key)))) {
+      out.push(here);
+      return;
+    }
+    for (const side of match.sides) {
+      if (side.fromMatch === undefined || side.take !== "winner") continue;
+      routesTo(side.fromMatch, candidates, seen, here, out);
+    }
+  }
+
+  /**
+   * The Winner column names somebody who is on neither side, because the slot
+   * they came through still reads "Winner of Match N" and nobody has typed that
+   * earlier result yet. The desk records the semi-final before going back to
+   * tidy up the quarter — or never goes back at all.
+   *
+   * A knockout gives us the answer: there is exactly one route to any slot, so
+   * if the name appears once in the matches feeding it, every result along that
+   * route follows. Fill those in as if the desk had typed them.
+   */
+  function inferFeederResults() {
+    for (const match of raw) {
+      const value = match.winnerCell.trim();
+      if (!value) continue;
+      if (value === "1" || value === "2") continue;
+
+      const candidates = winnerCandidates(value);
+      if (!candidates.size) continue;
+      // Already answerable from the row itself — nothing to work out.
+      if (match.sides.some((side) => sideKeys(side).some((key) => candidates.has(key)))) continue;
+
+      const routes: number[][] = [];
+      const seen = new Set<number>([match.matchNumber]);
+      for (const side of match.sides) {
+        if (side.players.length || side.fromMatch === undefined || side.take !== "winner") continue;
+        routesTo(side.fromMatch, candidates, seen, [], routes);
+      }
+
+      // No route means a typo, and more than one means the name is entered
+      // twice in the draw. Neither is safe to guess at, so leave both to the
+      // "doesn't match either side" warning.
+      if (routes.length !== 1) continue;
+
+      for (const number of routes[0] as number[]) {
+        const feeder = byNumber.get(number);
+        // Never overwrite a result somebody actually recorded: this only ever
+        // fills gaps, so an explicit entry always wins.
+        if (feeder && !feeder.winnerCell.trim()) feeder.winnerCell = value;
+      }
+    }
+  }
+
   linkNamedWinners();
+  inferFeederResults();
+  // Both passes add links and results that earlier lookups couldn't see, so the
+  // memoised answers are now stale. Recomputed from here on, with warnings on:
+  // whatever still doesn't match is a genuine problem in the sheet.
+  winnerCache.clear();
+  reportUnmatchedWinners = true;
 
   /** Follows a "Winner/Loser Match N" chain to whoever actually holds the slot. */
   function resolve(
@@ -582,8 +736,16 @@ export function parseMatchTab(
   for (const item of ordered) {
     const winnerIndex = winnerOf(item);
     const explicit = normalizeStatus(item.statusCell);
-    // Winner wins, then an explicit Status, then upcoming.
-    const status: MatchStatus = winnerIndex !== null ? "completed" : (explicit ?? "upcoming");
+    // Cancelled and no-show outrank a recorded winner, because that pairing is
+    // a walkover and the card should say so rather than reading as a played
+    // match. The winner itself still stands, so they advance either way.
+    // Otherwise: winner wins, then an explicit Status, then upcoming.
+    const status: MatchStatus =
+      explicit && isStoppedStatus(explicit)
+        ? explicit
+        : winnerIndex !== null
+          ? "completed"
+          : (explicit ?? "upcoming");
 
     const time = [item.day, item.timing].filter(Boolean).join(" · ");
 

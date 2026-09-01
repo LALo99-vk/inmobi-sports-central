@@ -28,20 +28,28 @@ const MIN_PRESENT_SCALE = 1.25;
 type SegState = "decided" | "live" | "pending";
 /** A search result: the fixture, and where in the draw it was found. */
 type Hit = { match: BracketMatch; index: number; round: string; section: string };
-type Segment = { key: string; d: string; state: SegState };
-type Arrow = { key: string; x: number; y: number; state: SegState };
-type Node = { key: string; x: number; y: number };
+/** The champion plaque is one more node on the road out of the final, which
+ *  lets a traced route run all the way to the trophy without a special case. */
+const CHAMP = -1;
+
+type Segment = { key: string; d: string; state: SegState; from: number; to: number };
+type Arrow = { key: string; x: number; y: number; state: SegState; to: number };
+type Node = { key: string; x: number; y: number; to: number };
 
 /**
- * One connector: out of the source card, across, and into the target card,
- * with rounded corners. Works for any pairing, so a match fed by a single
+ * One connector: out of the source card, across to `midX`, and into the target
+ * card, with rounded corners. Works for any pairing, so a match fed by a single
  * winner (a bye on the other side) draws just as cleanly as a classic pair.
+ * The turn is passed in rather than assumed to be the middle of the gutter —
+ * that is what lets two connectors sharing a gutter keep out of each other.
  */
-function edgePath(x1: number, y1: number, x2: number, y2: number) {
+function edgePath(x1: number, y1: number, x2: number, y2: number, midX: number) {
   if (Math.abs(y2 - y1) < 0.5) return `M ${x1} ${y1} H ${x2}`;
-  const midX = x1 + (x2 - x1) / 2;
   const dir = y2 > y1 ? 1 : -1;
-  const r = Math.min(CORNER, Math.abs(y2 - y1) / 2, (midX - x1) * 0.9);
+  const r = Math.max(
+    0,
+    Math.min(CORNER, Math.abs(y2 - y1) / 2, (midX - x1) * 0.9, (x2 - midX) * 0.9),
+  );
   return (
     `M ${x1} ${y1} H ${midX - r} Q ${midX} ${y1} ${midX} ${y1 + dir * r} ` +
     `V ${y2 - dir * r} Q ${midX} ${y2} ${midX + r} ${y2} H ${x2}`
@@ -58,6 +66,31 @@ function stateOf(match: BracketMatch): SegState {
   if (match.winner) return "decided";
   if (match.status === "live") return "live";
   return "pending";
+}
+
+/**
+ * One road through the draw, from a match the reader has pointed at: back
+ * through everything that had to happen for someone to arrive there, and
+ * forward along the single line of matches the winner goes on to. Deliberately
+ * not the sibling's half of the draw — including that would light most of the
+ * bracket by the semi-finals, which is the problem, not the fix.
+ */
+function routeOf(start: number, feeders: Map<number, number[]>, next: Map<number, number>) {
+  const seen = new Set<number>();
+  const stack = [start];
+  while (stack.length) {
+    const m = stack.pop() as number;
+    if (seen.has(m)) continue;
+    seen.add(m);
+    for (const feeder of feeders.get(m) ?? []) stack.push(feeder);
+  }
+  // Each match feeds exactly one other, so forward is a walk, not a search.
+  let cur = next.get(start);
+  while (cur !== undefined && !seen.has(cur)) {
+    seen.add(cur);
+    cur = next.get(cur);
+  }
+  return seen;
 }
 
 /**
@@ -144,6 +177,15 @@ function StatusTag({ status, compact }: { status: BracketMatch["status"]; compac
       </span>
     );
   }
+  // Worth the width even on a phone: a card with no score and no winner is
+  // otherwise indistinguishable from one that simply hasn't been played yet.
+  if (status === "cancelled" || status === "noshow") {
+    return (
+      <span className="text-[0.6rem] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        {status === "cancelled" ? "Cancelled" : "No show"}
+      </span>
+    );
+  }
   // Dropped on narrow screens so the scheduled time isn't truncated instead.
   if (compact) return null;
   return (
@@ -168,7 +210,9 @@ function SlotRow({
   height: number;
   compact: boolean;
 }) {
-  const decided = status === "completed";
+  // A cancelled tie has nobody to highlight, so both sides dim — which is the
+  // reading we want: neither of these two is going anywhere.
+  const decided = status !== "upcoming" && status !== "live";
   const dimmed = decided && !isWinner;
   const doubles = kind === "doubles" && (slot.players?.length ?? 0) > 1;
   const group = getGroup(slot.group);
@@ -280,6 +324,9 @@ function MatchCard({
   compact,
   courtLabel,
   highlighted,
+  onRoute,
+  dimmed,
+  onSelect,
   style,
 }: {
   match: BracketMatch;
@@ -288,10 +335,16 @@ function MatchCard({
   compact: boolean;
   courtLabel?: string | undefined;
   highlighted?: boolean | undefined;
+  /** On the road currently being traced. */
+  onRoute?: boolean | undefined;
+  /** A road is being traced and this card is not on it. */
+  dimmed?: boolean | undefined;
+  onSelect?: (() => void) | undefined;
   style: React.CSSProperties;
 }) {
   const live = match.status === "live";
   const done = match.status === "completed";
+  const stopped = match.status === "cancelled" || match.status === "noshow";
   // Where first, then when: on a narrow card the tail is what gets truncated,
   // and "which board am I on" is the thing a player actually came to find out.
   const where = match.court ? [courtLabel, match.court].filter(Boolean).join(" ") : "";
@@ -300,15 +353,36 @@ function MatchCard({
   return (
     <article
       style={style}
+      onClick={
+        onSelect
+          ? (event) => {
+              event.stopPropagation();
+              onSelect();
+            }
+          : undefined
+      }
       className={cn(
         "card-in absolute overflow-hidden rounded-md border transition-all duration-200",
+        onSelect && "cursor-pointer",
         // Matches that have happened come forward; ones still to come sit back,
         // so the eye lands on what is actually going on.
         live && "border-live/70 bg-card ring-2 ring-live/20 shadow-[0_4px_16px_-4px_var(--live)]",
         done &&
           "border-border bg-card shadow-[0_1px_3px_rgba(20,20,50,0.07)] hover:border-accent/60 hover:shadow-[0_4px_14px_-4px_rgba(20,20,50,0.16)]",
-        !live && !done && "border-dashed border-border bg-card/55 hover:border-foreground/25",
+        // Settled, but nothing happened here — flat and receded, so it reads as
+        // closed rather than as a fixture still to come.
+        stopped && "border-border/60 bg-secondary/25 opacity-70 hover:opacity-100",
+        !live &&
+          !done &&
+          !stopped &&
+          "border-dashed border-border bg-card/55 hover:border-foreground/25",
         highlighted && "border-sky ring-2 ring-sky/35",
+        // The traced road wins over every resting state above it: while one is
+        // being followed, that is the only thing the card is saying.
+        onRoute && "border-accent bg-card opacity-100 ring-2 ring-accent/45",
+        // Off-road cards stay down on hover too — a card that lifts under the
+        // cursor while something else is being traced reads as a live target.
+        dimmed && "opacity-25 saturate-50 hover:opacity-25",
       )}
     >
       <div
@@ -410,42 +484,108 @@ function Ladder({
     const segments: Segment[] = [];
     const arrows: Arrow[] = [];
     const nodes: Node[] = [];
+    // Who feeds whom, kept alongside the drawing so a traced route walks the
+    // same references the connectors were drawn from.
+    const feedersOf = new Map<number, number[]>();
+    const nextOf = new Map<number, number>();
 
-    for (const target of cards) {
-      const feeders = [target.match.a.fromMatch, target.match.b.fromMatch]
-        .filter((n): n is number => n !== undefined)
-        .map((n) => placed.get(n))
-        .filter((card): card is Placed => card !== undefined);
+    /* Every connector used to turn at the middle of its gutter, so a column's
+       vertical runs were all drawn on one shared x. That reads fine while each
+       match sits level with its feeders, but compressColumn deliberately pulls a
+       round tight while its feeders stay spread — and then those runs cover
+       overlapping y spans and stack on top of one another. So each link gets its
+       own trunk: any whose vertical runs would collide are dealt into separate
+       lanes across the gutter, while a column with no collisions still turns at
+       the middle exactly as before. */
+    type Link = { target: Placed; feeders: Placed[]; span: [number, number] | null; lane: number };
 
-      if (!feeders.length) continue;
+    for (const round of rounds) {
+      const links: Link[] = [];
 
-      for (const source of feeders) {
-        segments.push({
-          key: `e${source.match.matchNumber}-${target.match.matchNumber}`,
-          d: edgePath(source.x + colW, source.y, target.x - ARROW, target.y),
-          state: stateOf(source.match),
-        });
+      for (const match of round.matches) {
+        const target = placed.get(match.matchNumber);
+        if (!target) continue;
+
+        const feeders = [match.a.fromMatch, match.b.fromMatch]
+          .filter((n): n is number => n !== undefined)
+          .map((n) => placed.get(n))
+          .filter((card): card is Placed => card !== undefined);
+        if (!feeders.length) continue;
+
+        // Only a link that actually turns needs a lane of its own: a feeder
+        // sitting level with its target is a straight line across the gutter.
+        const turning = feeders.map((f) => f.y).filter((y) => Math.abs(y - target.y) >= 0.5);
+        const span: [number, number] | null = turning.length
+          ? [Math.min(target.y, ...turning), Math.max(target.y, ...turning)]
+          : null;
+
+        feedersOf.set(
+          match.matchNumber,
+          feeders.map((f) => f.match.matchNumber),
+        );
+        for (const feeder of feeders) nextOf.set(feeder.match.matchNumber, match.matchNumber);
+
+        links.push({ target, feeders, span, lane: 0 });
       }
 
-      const states = feeders.map((f) => stateOf(f.match));
-      const arrowState: SegState = states.every((s) => s === "decided")
-        ? "decided"
-        : states.includes("live")
-          ? "live"
-          : "pending";
+      // Greedy interval colouring: a lane is free again as soon as its last
+      // trunk has ended, so the lanes only multiply where lines truly overlap.
+      const laneEnds: number[] = [];
+      for (const link of [...links].sort((a, b) => (a.span?.[0] ?? 0) - (b.span?.[0] ?? 0))) {
+        const span = link.span;
+        if (!span) continue;
+        const free = laneEnds.findIndex((end) => end <= span[0] - 1);
+        if (free < 0) {
+          link.lane = laneEnds.length;
+          laneEnds.push(span[1]);
+        } else {
+          link.lane = free;
+          laneEnds[free] = span[1];
+        }
+      }
+      const laneCount = laneEnds.length;
 
-      arrows.push({
-        key: `a${target.match.matchNumber}`,
-        x: target.x,
-        y: target.y,
-        state: arrowState,
-      });
-      if (arrowState === "decided" && feeders.length > 1) {
-        nodes.push({
-          key: `n${target.match.matchNumber}`,
-          x: target.x - gutter / 2,
+      for (const { target, feeders, lane } of links) {
+        // Lanes stay clear of both card edges so the corners keep their radius.
+        const t = laneCount <= 1 ? 0.5 : 0.22 + (0.56 * lane) / (laneCount - 1);
+        const bandStart = Math.max(...feeders.map((f) => f.x)) + colW;
+        const bandEnd = target.x - ARROW;
+        const midX = bandStart + (bandEnd - bandStart) * t;
+
+        for (const source of feeders) {
+          segments.push({
+            key: `e${source.match.matchNumber}-${target.match.matchNumber}`,
+            d: edgePath(source.x + colW, source.y, bandEnd, target.y, midX),
+            state: stateOf(source.match),
+            from: source.match.matchNumber,
+            to: target.match.matchNumber,
+          });
+        }
+
+        const states = feeders.map((f) => stateOf(f.match));
+        const arrowState: SegState = states.every((s) => s === "decided")
+          ? "decided"
+          : states.includes("live")
+            ? "live"
+            : "pending";
+
+        arrows.push({
+          key: `a${target.match.matchNumber}`,
+          x: target.x,
           y: target.y,
+          state: arrowState,
+          to: target.match.matchNumber,
         });
+        // The junction dot belongs on the trunk the two feeders actually meet
+        // at, which is no longer the centre of the gutter.
+        if (arrowState === "decided" && feeders.length > 1) {
+          nodes.push({
+            key: `n${target.match.matchNumber}`,
+            x: midX,
+            y: target.y,
+            to: target.match.matchNumber,
+          });
+        }
       }
     }
 
@@ -462,8 +602,11 @@ function Ladder({
         key: "champ",
         d: `M ${finalCard.x + colW} ${champY} H ${champX - ARROW}`,
         state: champState,
+        from: finalMatch.matchNumber,
+        to: CHAMP,
       });
-      arrows.push({ key: "champ-a", x: champX, y: champY, state: champState });
+      arrows.push({ key: "champ-a", x: champX, y: champY, state: champState, to: CHAMP });
+      nextOf.set(finalMatch.matchNumber, CHAMP);
     }
 
     const champion =
@@ -478,6 +621,8 @@ function Ladder({
       segments,
       arrows,
       nodes,
+      feedersOf,
+      nextOf,
       champX,
       champY,
       champion,
@@ -485,6 +630,28 @@ function Ladder({
       height: bottom + cardH / 2 + 24,
     };
   }, [rounds, cardH, slotH, colW, gutter, pitch, champW, showChampion]);
+
+  /* Click a connector — or a card — and the draw traces that one road: back
+     through everything that fed into it, forward to the trophy. Everything off
+     the road drops back, which is what makes a dense gutter followable at all. */
+  const [routeFrom, setRouteFrom] = useState<number | null>(null);
+  const route = useMemo(
+    () => (routeFrom === null ? null : routeOf(routeFrom, layout.feedersOf, layout.nextOf)),
+    [routeFrom, layout],
+  );
+
+  // Switching section or draw leaves a route pointing at matches that are no
+  // longer on screen, so a new ladder starts clean.
+  useEffect(() => setRouteFrom(null), [rounds]);
+
+  useEffect(() => {
+    if (routeFrom === null) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRouteFrom(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [routeFrom]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [overflows, setOverflows] = useState(false);
@@ -551,7 +718,11 @@ function Ladder({
   /* The ladder is a fixed-size canvas, which is what lets present mode scale it
      as one piece rather than reflowing it. */
   const canvas = (
-    <div className="relative" style={{ width: layout.width, height: layout.height }}>
+    <div
+      className="relative"
+      style={{ width: layout.width, height: layout.height }}
+      onClick={() => setRouteFrom(null)}
+    >
       {/* Alternating lanes give the ladder a rhythm and tie each column together */}
       {rounds.map((round, r) => (
         <div
@@ -570,33 +741,50 @@ function Ladder({
         />
       ))}
 
-      <svg aria-hidden className="absolute inset-0" width={layout.width} height={layout.height}>
-        {/* soft halo under every live/decided path — gives the connectors weight */}
-        <g fill="none" strokeLinecap="round" opacity={0.16}>
+      <svg
+        aria-hidden
+        className="absolute inset-0"
+        width={layout.width}
+        height={layout.height}
+        style={{ pointerEvents: "none" }}
+      >
+        {/* A halo under the live paths only. Haloing every decided path too gave
+            the connectors weight while they were far apart, but at 9px it fused
+            neighbouring trunks into one band — the opposite of legible. */}
+        <g fill="none" strokeLinecap="round" opacity={0.18}>
           {layout.segments
-            .filter((seg) => seg.state !== "pending")
+            .filter((seg) => seg.state === "live" && (!route || route.has(seg.to)))
             .map((seg) => (
               <path
                 key={`halo-${seg.key}`}
                 d={seg.d}
                 stroke={STROKE[seg.state].color}
-                strokeWidth={9}
+                strokeWidth={8}
               />
             ))}
         </g>
 
         <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-          {layout.segments.map((seg) => (
-            <path
-              key={seg.key}
-              d={seg.d}
-              stroke={STROKE[seg.state].color}
-              strokeWidth={STROKE[seg.state].width}
-              strokeDasharray={STROKE[seg.state].dash}
-              strokeOpacity={STROKE[seg.state].opacity}
-              className={seg.state === "live" ? "connector-flow" : undefined}
-            />
-          ))}
+          {layout.segments.map((seg) => {
+            // An edge is on the road only if both of its ends are: each match
+            // feeds exactly one other, so no off-road edge can join two of them.
+            const lit = !route || (route.has(seg.from) && route.has(seg.to));
+            return (
+              <path
+                key={seg.key}
+                d={seg.d}
+                stroke={STROKE[seg.state].color}
+                strokeWidth={lit && route ? STROKE[seg.state].width + 1 : STROKE[seg.state].width}
+                strokeDasharray={STROKE[seg.state].dash}
+                strokeOpacity={STROKE[seg.state].opacity}
+                opacity={lit ? 1 : 0.1}
+                className={cn(
+                  "transition-opacity duration-200",
+                  seg.state === "live" && "connector-flow",
+                )}
+              />
+            );
+          })}
         </g>
 
         <g>
@@ -606,6 +794,7 @@ function Ladder({
               cx={n.x}
               cy={n.y}
               r={4}
+              opacity={!route || route.has(n.to) ? 1 : 0.1}
               fill="var(--background)"
               stroke="var(--accent)"
               strokeWidth={2.5}
@@ -619,7 +808,29 @@ function Ladder({
               key={a.key}
               points={`${a.x},${a.y} ${a.x - ARROW},${a.y - 5.5} ${a.x - ARROW},${a.y + 5.5}`}
               fill={STROKE[a.state].color}
-              opacity={a.state === "pending" ? 0.45 : 1}
+              opacity={route && !route.has(a.to) ? 0.1 : a.state === "pending" ? 0.45 : 1}
+            />
+          ))}
+        </g>
+
+        {/* The click target for a connector is the whole lane, not the 3px of
+            ink in it: transparent fat strokes sit over the drawing and are the
+            only part of the svg that takes a pointer. */}
+        <g
+          fill="none"
+          stroke="transparent"
+          strokeWidth={18}
+          strokeLinecap="round"
+          style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        >
+          {layout.segments.map((seg) => (
+            <path
+              key={`hit-${seg.key}`}
+              d={seg.d}
+              onClick={(event) => {
+                event.stopPropagation();
+                setRouteFrom((current) => (current === seg.from ? null : seg.from));
+              }}
             />
           ))}
         </g>
@@ -692,6 +903,13 @@ function Ladder({
           compact={isMobile}
           courtLabel={courtLabel}
           highlighted={highlight?.has(card.match.id)}
+          onRoute={route?.has(card.match.matchNumber) ?? false}
+          dimmed={route ? !route.has(card.match.matchNumber) : false}
+          onSelect={() =>
+            setRouteFrom((current) =>
+              current === card.match.matchNumber ? null : card.match.matchNumber,
+            )
+          }
           style={{
             left: card.x,
             top: card.y - cardH / 2,
@@ -706,10 +924,11 @@ function Ladder({
       {showChampion && (
         <div
           className={cn(
-            "absolute flex flex-col justify-center rounded-md px-4",
+            "absolute flex flex-col justify-center rounded-md px-4 transition-opacity duration-200",
             layout.champion
               ? "ink-panel border-t-2 border-accent"
               : "border border-dashed border-border bg-card",
+            route && !route.has(CHAMP) && "opacity-25",
           )}
           style={{
             left: layout.champX,
@@ -1168,7 +1387,6 @@ function usePresent() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
   const enter = () => {

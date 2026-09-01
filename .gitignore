@@ -36,3 +36,15 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Working files — screenshots, reference PDFs, scratch exports
+Screenshot*.png
+Screenshot*.jpeg
+Screenshot*.jpg
+Screen Shot*.png
+*.pdf
+pdfs/
+
+# Standalone Sheets scripts — run locally, not part of the site
+sheet-auth.ts
+demo-fill.ts
