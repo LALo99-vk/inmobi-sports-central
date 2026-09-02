@@ -269,12 +269,7 @@ function Winners({
   return (
     <section>
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Winners</h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The points go to the house; the medal goes to whoever won it.
-          </p>
-        </div>
+        <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Winners</h2>
         <Link
           to="/points-table"
           className="text-xs text-muted-foreground transition-colors hover:text-accent"

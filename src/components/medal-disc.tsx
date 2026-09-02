@@ -13,7 +13,7 @@
  * decision: Golden Gladiators is `#C8951E`, near enough to gold that a
  * house-coloured ring would make every GG silver look like a first place.
  */
-import { useId } from "react";
+import { useId, type Ref } from "react";
 
 import type { Medal } from "@/data/tournaments";
 import { InMobiLoopShapes } from "@/components/inmobi-mark";
@@ -107,6 +107,8 @@ export type MedalDiscProps = {
   /** Spoken description; the visible name always sits below the disc. */
   label: string;
   className?: string;
+  /** So the podium can paint a shareable poster from the disc on screen. */
+  ref?: Ref<SVGSVGElement>;
 };
 
 export function MedalDisc({
@@ -118,6 +120,7 @@ export function MedalDisc({
   foot,
   label,
   className,
+  ref,
 }: MedalDiscProps) {
   // Gradients are per-instance: a page holds three discs in three metals, and
   // shared ids would strike all of them in whichever landed last.
@@ -130,6 +133,7 @@ export function MedalDisc({
 
   return (
     <svg
+      ref={ref}
       viewBox="0 0 200 246"
       role="img"
       aria-label={label}

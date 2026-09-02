@@ -7,11 +7,13 @@
  * the standings are built from, so a medal can never say one thing here and
  * another on the points table.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { Check, Download, Loader2 } from "lucide-react";
 
 import type { EventMedal, EventResult, Group, Medal, SportPoints } from "@/data/tournaments";
 import { MEDALS } from "@/data/tournaments";
 import { MedalDisc } from "@/components/medal-disc";
+import { buildPoster, downloadPoster } from "@/lib/medal-poster";
 import { cn } from "@/lib/utils";
 
 const MEDAL_LABEL: Record<Medal, string> = { gold: "Gold", silver: "Silver", bronze: "Bronze" };
@@ -74,7 +76,7 @@ export function EventWinners({ sport, teams }: { sport: SportPoints; teams: Grou
         </div>
       )}
 
-      <Podium event={event} slug={sport.slug ?? ""} byCode={byCode} />
+      <Podium event={event} sport={sport.sport} slug={sport.slug ?? ""} byCode={byCode} />
       <RecordSheet event={event} byCode={byCode} />
     </div>
   );
@@ -86,10 +88,12 @@ export function EventWinners({ sport, teams }: { sport: SportPoints; teams: Grou
 
 function Podium({
   event,
+  sport,
   slug,
   byCode,
 }: {
   event: EventResult;
+  sport: string;
   slug: string;
   byCode: Map<string, Group>;
 }) {
@@ -108,42 +112,131 @@ function Podium({
           const display = winnerName(medal, team);
 
           return (
-            <div key={place} className="flex flex-col items-center text-center">
-              <MedalDisc
-                medal={place}
-                houseColor={team.color}
-                houseName={team.name}
-                sportSlug={slug}
-                names={medal.winners ?? []}
-                foot="SPORTS DAY · 2026"
-                label={`${MEDAL_LABEL[place]}: ${display}, ${team.name}`}
-                className={cn("mx-auto", place === "gold" ? "max-w-[13rem]" : "max-w-[10rem]")}
-              />
-
-              <p
-                className={cn(
-                  "hidden font-medal font-semibold leading-[1.15] tracking-[0.015em] text-primary-foreground sm:mt-4 sm:block",
-                  place === "gold"
-                    ? "sm:text-[1.55rem] lg:text-[2.15rem]"
-                    : "sm:text-[1.1rem] lg:text-[1.45rem]",
-                )}
-              >
-                {display}
-              </p>
-              <span className="hidden items-center gap-2 text-primary-foreground/65 sm:mt-1.5 sm:flex sm:text-xs lg:text-sm">
-                <span
-                  className="h-3 w-[3px] shrink-0"
-                  style={{ backgroundColor: team.color }}
-                  aria-hidden
-                />
-                <span className="truncate">{team.name}</span>
-              </span>
-
-              <Plinth rank={rank} />
-            </div>
+            <Slot
+              key={place}
+              place={place}
+              rank={rank}
+              team={team}
+              display={display}
+              sport={sport}
+              category={event.category}
+              slug={slug}
+              names={medal.winners ?? []}
+            />
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** One step of the podium: the medal, who won it, and a way to keep it. */
+function Slot({
+  place,
+  rank,
+  team,
+  display,
+  sport,
+  category,
+  slug,
+  names,
+}: {
+  place: Medal;
+  rank: number;
+  team: Group;
+  display: string;
+  sport: string;
+  category: string;
+  slug: string;
+  names: string[];
+}) {
+  // The poster is painted from the disc that is already on screen, so it can
+  // never drift from what the winner is looking at.
+  const discRef = useRef<SVGSVGElement>(null);
+  const [state, setState] = useState<"idle" | "working" | "done">("idle");
+
+  async function save() {
+    const disc = discRef.current;
+    if (!disc || state === "working") return;
+    setState("working");
+    try {
+      const input = {
+        disc,
+        name: display,
+        house: team.name,
+        houseColor: team.color,
+        sport,
+        category,
+        place: MEDAL_LABEL[place] as "Gold" | "Silver" | "Bronze",
+      };
+      downloadPoster(await buildPoster(input), input);
+      setState("done");
+      setTimeout(() => setState("idle"), 2400);
+    } catch {
+      // Nothing was saved, so put the button back rather than claim otherwise.
+      setState("idle");
+    }
+  }
+
+  return (
+    <div className="group/slot flex flex-col items-center text-center">
+      <MedalDisc
+        ref={discRef}
+        medal={place}
+        houseColor={team.color}
+        houseName={team.name}
+        sportSlug={slug}
+        names={names}
+        foot="SPORTS DAY · 2026"
+        label={`${MEDAL_LABEL[place]}: ${display}, ${team.name}`}
+        className={cn("mx-auto", place === "gold" ? "max-w-[13rem]" : "max-w-[10rem]")}
+      />
+
+      <p
+        className={cn(
+          "hidden font-medal font-semibold leading-[1.15] tracking-[0.015em] text-primary-foreground sm:mt-4 sm:block",
+          place === "gold"
+            ? "sm:text-[1.55rem] lg:text-[2.15rem]"
+            : "sm:text-[1.1rem] lg:text-[1.45rem]",
+        )}
+      >
+        {display}
+      </p>
+      <span className="hidden items-center gap-2 text-primary-foreground/65 sm:mt-1.5 sm:flex sm:text-xs lg:text-sm">
+        <span
+          className="h-3 w-[3px] shrink-0"
+          style={{ backgroundColor: team.color }}
+          aria-hidden
+        />
+        <span className="truncate">{team.name}</span>
+      </span>
+
+      <button
+        type="button"
+        onClick={save}
+        disabled={state === "working"}
+        aria-label={`Save ${display}'s medal as an image`}
+        className={cn(
+          "mt-2 inline-flex items-center gap-1.5 border border-primary-foreground/20 px-2.5 py-1",
+          "text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-primary-foreground/70",
+          "transition-colors hover:border-accent hover:text-accent",
+          "disabled:cursor-not-allowed disabled:opacity-60",
+          // Always reachable on a phone, where there is no hover.
+          "sm:opacity-0 sm:group-hover/slot:opacity-100 sm:focus-visible:opacity-100",
+          state === "done" && "sm:opacity-100",
+        )}
+      >
+        {state === "working" ? (
+          <Loader2 className="size-3 animate-spin" />
+        ) : state === "done" ? (
+          <Check className="size-3" />
+        ) : (
+          <Download className="size-3" />
+        )}
+        {state === "working" ? "Saving" : state === "done" ? "Saved" : "Save"}
+      </button>
+
+      <Plinth rank={rank} />
     </div>
   );
 }
