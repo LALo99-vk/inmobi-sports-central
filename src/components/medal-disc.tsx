@@ -23,7 +23,11 @@ import { cn } from "@/lib/utils";
 /** Struck-metal ramps: highlight, body, shadow, edge, and the engraved line. */
 const METAL: Record<Medal, { lite: string; mid: string; dark: string; deep: string; ink: string }> =
   {
-    gold: { lite: "#F6E2AC", mid: "#D8AC44", dark: "#936D18", deep: "#5F4409", ink: "#4A340A" },
+    // Gold has to read as gold rather than yellow, and the difference is the
+    // shadow: at hue 41 it goes olive, at 35 it goes brown, which is what the
+    // eye recognises as metal. Kept clear of bronze's 30 so the two never blur
+    // into each other side by side on the podium.
+    gold: { lite: "#FBEEC0", mid: "#C6952B", dark: "#7E5214", deep: "#4B3208", ink: "#382305" },
     silver: { lite: "#F2F5F8", mid: "#BFC6CE", dark: "#87909B", deep: "#5A626B", ink: "#464D55" },
     bronze: { lite: "#F1CCA4", mid: "#C9884F", dark: "#8E5628", deep: "#603818", ink: "#4C2C12" },
   };
