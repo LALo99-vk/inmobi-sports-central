@@ -7,7 +7,7 @@
  * the standings are built from, so a medal can never say one thing here and
  * another on the points table.
  */
-import { useRef, useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { Check, Download, Loader2 } from "lucide-react";
 
 import type { EventMedal, EventResult, Group, Medal, SportPoints } from "@/data/tournaments";
@@ -18,6 +18,9 @@ import { cn } from "@/lib/utils";
 
 const MEDAL_LABEL: Record<Medal, string> = { gold: "Gold", silver: "Silver", bronze: "Bronze" };
 const PLACE: Record<Medal, number> = { gold: 1, silver: 2, bronze: 3 };
+
+/** Live handles on the three discs, so the rows below can paint from them. */
+type DiscHandles = RefObject<Map<Medal, SVGSVGElement | null>>;
 
 /** The order they stand on a podium: silver left, gold centre, bronze right. */
 const PODIUM_ORDER: Medal[] = ["silver", "gold", "bronze"];
@@ -46,6 +49,11 @@ export function EventWinners({ sport, teams }: { sport: SportPoints; teams: Grou
   const event = events.find((item) => item.category === categoryName) ?? events[0];
 
   const byCode = new Map(teams.map((team) => [team.code, team]));
+
+  // The poster is painted from the disc already on screen, so the two can never
+  // drift. The discs live on the podium and the save buttons live in the rows
+  // below it, so the handles are held here, where both can reach them.
+  const discs = useRef(new Map<Medal, SVGSVGElement | null>());
 
   if (!event) return <NothingDecided sport={sport.sport} />;
 
@@ -76,8 +84,8 @@ export function EventWinners({ sport, teams }: { sport: SportPoints; teams: Grou
         </div>
       )}
 
-      <Podium event={event} sport={sport.sport} slug={sport.slug ?? ""} byCode={byCode} />
-      <RecordSheet event={event} byCode={byCode} />
+      <Podium event={event} slug={sport.slug ?? ""} byCode={byCode} discs={discs} />
+      <RecordSheet event={event} sport={sport.sport} byCode={byCode} discs={discs} />
     </div>
   );
 }
@@ -88,14 +96,14 @@ export function EventWinners({ sport, teams }: { sport: SportPoints; teams: Grou
 
 function Podium({
   event,
-  sport,
   slug,
   byCode,
+  discs,
 }: {
   event: EventResult;
-  sport: string;
   slug: string;
   byCode: Map<string, Group>;
+  discs: DiscHandles;
 }) {
   return (
     <div className="ink-panel mt-6 overflow-hidden px-4 pt-10 sm:px-8 sm:pt-14">
@@ -118,10 +126,9 @@ function Podium({
               rank={rank}
               team={team}
               display={display}
-              sport={sport}
-              category={event.category}
               slug={slug}
               names={medal.winners ?? []}
+              discs={discs}
             />
           );
         })}
@@ -130,58 +137,30 @@ function Podium({
   );
 }
 
-/** One step of the podium: the medal, who won it, and a way to keep it. */
+/** One step of the podium: the medal, and who won it. */
 function Slot({
   place,
   rank,
   team,
   display,
-  sport,
-  category,
   slug,
   names,
+  discs,
 }: {
   place: Medal;
   rank: number;
   team: Group;
   display: string;
-  sport: string;
-  category: string;
   slug: string;
   names: string[];
+  discs: DiscHandles;
 }) {
-  // The poster is painted from the disc that is already on screen, so it can
-  // never drift from what the winner is looking at.
-  const discRef = useRef<SVGSVGElement>(null);
-  const [state, setState] = useState<"idle" | "working" | "done">("idle");
-
-  async function save() {
-    const disc = discRef.current;
-    if (!disc || state === "working") return;
-    setState("working");
-    try {
-      const input = {
-        disc,
-        name: display,
-        house: team.name,
-        houseColor: team.color,
-        sport,
-        category,
-        place: MEDAL_LABEL[place] as "Gold" | "Silver" | "Bronze",
-      };
-      downloadPoster(await buildPoster(input), input);
-      setState("done");
-      setTimeout(() => setState("idle"), 2400);
-    } catch {
-      // Nothing was saved, so put the button back rather than claim otherwise.
-      setState("idle");
-    }
-  }
-
   return (
-    <div className="group/slot flex flex-col items-center text-center">
+    <div className="flex flex-col items-center text-center">
       <MedalDisc
-        ref={discRef}
+        ref={(node) => {
+          discs.current.set(place, node);
+        }}
         medal={place}
         houseColor={team.color}
         houseName={team.name}
@@ -210,31 +189,6 @@ function Slot({
         />
         <span className="truncate">{team.name}</span>
       </span>
-
-      <button
-        type="button"
-        onClick={save}
-        disabled={state === "working"}
-        aria-label={`Save ${display}'s medal as an image`}
-        className={cn(
-          "mt-2 inline-flex items-center gap-1.5 border border-primary-foreground/20 px-2.5 py-1",
-          "text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-primary-foreground/70",
-          "transition-colors hover:border-accent hover:text-accent",
-          "disabled:cursor-not-allowed disabled:opacity-60",
-          // Always reachable on a phone, where there is no hover.
-          "sm:opacity-0 sm:group-hover/slot:opacity-100 sm:focus-visible:opacity-100",
-          state === "done" && "sm:opacity-100",
-        )}
-      >
-        {state === "working" ? (
-          <Loader2 className="size-3 animate-spin" />
-        ) : state === "done" ? (
-          <Check className="size-3" />
-        ) : (
-          <Download className="size-3" />
-        )}
-        {state === "working" ? "Saving" : state === "done" ? "Saved" : "Save"}
-      </button>
 
       <Plinth rank={rank} />
     </div>
@@ -295,7 +249,17 @@ function Plinth({ rank }: { rank: number }) {
  * it is what a screen reader, a narrow phone and a skim-reader all get on
  * without having to parse an SVG.
  */
-function RecordSheet({ event, byCode }: { event: EventResult; byCode: Map<string, Group> }) {
+function RecordSheet({
+  event,
+  sport,
+  byCode,
+  discs,
+}: {
+  event: EventResult;
+  sport: string;
+  byCode: Map<string, Group>;
+  discs: DiscHandles;
+}) {
   return (
     <div className="border border-t-0 border-border bg-surface px-4 sm:px-7">
       {MEDALS.map((place) => {
@@ -307,7 +271,7 @@ function RecordSheet({ event, byCode }: { event: EventResult; byCode: Map<string
         return (
           <div
             key={place}
-            className="grid grid-cols-[1.75rem_1fr_auto] items-center gap-4 border-b border-border py-4 last:border-b-0"
+            className="grid grid-cols-[1.75rem_1fr_auto_auto] items-center gap-3 border-b border-border py-4 last:border-b-0 sm:gap-4"
           >
             <span className="font-display text-base font-black tabular-nums text-muted-foreground/70">
               {PLACE[place]}
@@ -335,10 +299,100 @@ function RecordSheet({ event, byCode }: { event: EventResult; byCode: Map<string
             <span className="font-display text-base font-extrabold tabular-nums">
               {decided ? `+${medal.points}` : "—"}
             </span>
+            {decided ? (
+              <SaveMedal
+                place={place}
+                name={display}
+                team={team}
+                sport={sport}
+                category={event.category}
+                discs={discs}
+              />
+            ) : (
+              <span className="w-8" />
+            )}
           </div>
         );
       })}
     </div>
+  );
+}
+
+/* ------------------------------------------------------------------ *
+ * Keeping a medal
+ * ------------------------------------------------------------------ */
+
+/**
+ * Paints this row's medal into a poster and saves it.
+ *
+ * It sits in the record rather than on the podium: the podium is the moment
+ * and putting three buttons across it crowded the medals, while hiding them
+ * until hover — which is what the podium did — meant nobody on a phone could
+ * find them and few on a desktop ever would. Here it is the same control
+ * everywhere, beside the name it belongs to.
+ */
+function SaveMedal({
+  place,
+  name,
+  team,
+  sport,
+  category,
+  discs,
+}: {
+  place: Medal;
+  name: string;
+  team: Group;
+  sport: string;
+  category: string;
+  discs: DiscHandles;
+}) {
+  const [state, setState] = useState<"idle" | "working" | "done">("idle");
+
+  async function save() {
+    const disc = discs.current.get(place);
+    if (!disc || state === "working") return;
+    setState("working");
+    try {
+      const input = {
+        disc,
+        name,
+        house: team.name,
+        houseColor: team.color,
+        sport,
+        category,
+        place: MEDAL_LABEL[place] as "Gold" | "Silver" | "Bronze",
+      };
+      downloadPoster(await buildPoster(input), input);
+      setState("done");
+      setTimeout(() => setState("idle"), 2400);
+    } catch {
+      // Nothing was saved, so put the button back rather than claim otherwise.
+      setState("idle");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={save}
+      disabled={state === "working"}
+      title={`Save ${name}'s medal`}
+      aria-label={`Save ${name}'s medal as an image`}
+      className={cn(
+        "inline-flex size-8 items-center justify-center border border-border text-muted-foreground",
+        "transition-colors hover:border-accent hover:text-accent",
+        "disabled:cursor-not-allowed disabled:opacity-60",
+        state === "done" && "border-accent text-accent",
+      )}
+    >
+      {state === "working" ? (
+        <Loader2 className="size-3.5 animate-spin" />
+      ) : state === "done" ? (
+        <Check className="size-3.5" />
+      ) : (
+        <Download className="size-3.5" />
+      )}
+    </button>
   );
 }
 
