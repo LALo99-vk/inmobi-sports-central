@@ -405,8 +405,8 @@ export function NothingDecided({ sport }: { sport?: string }) {
     <div className="border-y border-border py-20 text-center">
       <p className="font-display text-xl font-extrabold">No medals yet</p>
       <p className="mx-auto mt-3 max-w-md text-muted-foreground">
-        {sport ? `${sport} hasn't been decided.` : "Nothing has been decided."} The podium fills in
-        the moment a result reaches the sheet.
+        {sport ? `${sport} hasn't been decided yet.` : "Nothing has been decided yet."} The podium
+        fills in as soon as the results come in.
       </p>
     </div>
   );
