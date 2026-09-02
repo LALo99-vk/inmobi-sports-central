@@ -99,6 +99,19 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         rel: "stylesheet",
         href: appCss,
       },
+      // The typefaces styles.css names were never actually fetched, so every
+      // page had been falling back to the system UI font. Archivo and Barlow
+      // are the site's own pair; Cormorant Garamond is reserved for the podium,
+      // where a winner's name wants to read as well-set rather than loud.
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      {
+        rel: "stylesheet",
+        href:
+          "https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800;900" +
+          "&family=Barlow:wght@400;500;600;700" +
+          "&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&display=swap",
+      },
       // SVG first for browsers that support it; .ico is the legacy fallback.
       { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
       { rel: "icon", href: "/favicon.ico", sizes: "any" },

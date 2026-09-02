@@ -60,6 +60,12 @@ export type EventMedal = {
   points: number;
   /** Group code of the winning house. Undefined until the sheet names one. */
   team?: string | undefined;
+  /**
+   * Who actually won it: one name for a singles event, both for a pair. Comes
+   * from the Winners tab, so it stays empty until someone fills that in — and
+   * stays empty for team sports, where the house itself is the winner.
+   */
+  winners?: string[] | undefined;
 };
 
 /**

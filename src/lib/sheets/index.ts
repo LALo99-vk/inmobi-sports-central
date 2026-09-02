@@ -31,6 +31,7 @@ import {
   POINTS_TAB_NAMES,
   RESULTS_TAB_NAMES,
 } from "./points";
+import { applyWinnersTab, WINNERS_TAB_NAMES } from "./winners";
 import { loadFolderMedia } from "@/lib/drive";
 
 /** How long a fetched copy is served before we re-read the sheet. */
@@ -60,6 +61,7 @@ const RESERVED_TABS = new Set([
   "settings",
   "readme",
   ...POINTS_TAB_NAMES,
+  ...WINNERS_TAB_NAMES,
 ]);
 
 /** Reserved names are compared without spacing, so "POINTS TABLE" matches. */
@@ -333,8 +335,19 @@ function buildPoints(
   const parsed = parseResultsTab(resultsTab.grid, teams, resultsTab.title);
   warnings.push(...parsed.warnings);
 
+  // Names, if the Winners tab exists. Purely additive — the medal, the house
+  // and the points are already settled by the time this runs, so an unreadable
+  // name can never move a point.
+  let events = parsed.events;
+  const winnersTab = findNamedTab(tabs, WINNERS_TAB_NAMES);
+  if (winnersTab) {
+    const named = applyWinnersTab(events, winnersTab.grid, teams, winnersTab.title);
+    events = named.events;
+    warnings.push(...named.warnings);
+  }
+
   const order = leaderboard?.order;
-  const table = buildPointsTable(parsed.events, teams, configs, {
+  const table = buildPointsTable(events, teams, configs, {
     ...(order ? { order } : {}),
   });
   warnings.push(...reconcile(table, leaderboard, resultsTab.title));

@@ -150,6 +150,73 @@ const MOTIFS: Record<string, () => React.ReactElement> = {
   darts: DartsMotif,
 };
 
+/**
+ * Chess, as the pieces rather than the board.
+ *
+ * The board motif is right for a masthead, where it is 300px of fine line-work.
+ * Struck into a 64px medal face those 64 squares collapse into a grey texture.
+ * Real chess medals put a group of pieces in relief instead, so this does the
+ * same in flat silhouette: rook, king and queen standing on a ground line, the
+ * king tallest in the middle. Three reads at this size where six would mush.
+ */
+function ChessEmblem() {
+  return (
+    <g fill="currentColor" stroke="none" transform="translate(2,-14)">
+      {/* Rook — the battlement is the whole tell. */}
+      <path d="M32 96h9v7h6v-7h9v7h6v-7h9v21H32Z" />
+      <rect x="29" y="117" width="45" height="6" rx="1" />
+      <path d="M38 123c-2 14-2 26-4 34h35c-2-8-2-20-4-34Z" />
+      <rect x="28" y="157" width="47" height="9" rx="3" />
+      <rect x="25" y="168" width="53" height="8" rx="3" />
+
+      {/* King — centre and tallest, cross finial on top. */}
+      <rect x="96" y="48" width="8" height="24" rx="2" />
+      <rect x="88" y="55" width="24" height="8" rx="2" />
+      <circle cx="100" cy="88" r="15" />
+      <path d="M90 100h20l3 12H87Z" />
+      <path d="M91 116h18c0 16 6 30 13 40H78c7-10 13-24 13-40Z" />
+      <rect x="80" y="156" width="40" height="10" rx="3" />
+      <rect x="76" y="168" width="48" height="8" rx="3" />
+
+      {/* Queen — the coronet, and the pearl above it. */}
+      <circle cx="146" cy="76" r="5" />
+      <path d="M132 106l3-18 5 11 6-17 6 17 5-11 3 18Z" />
+      <rect x="131" y="104" width="30" height="7" rx="2" />
+      <path d="M135 111c-2 18-4 32-7 46h40c-3-14-5-28-7-46Z" />
+      <rect x="126" y="157" width="42" height="9" rx="3" />
+      <rect x="123" y="168" width="48" height="8" rx="3" />
+
+      {/* The board they stand on. */}
+      <rect x="26" y="176" width="148" height="5" rx="2" />
+    </g>
+  );
+}
+
+/** Sports whose medal face wants its own mark rather than the masthead motif. */
+const EMBLEMS: Record<string, () => React.ReactElement> = {
+  chess: ChessEmblem,
+};
+
+/**
+ * What gets struck into a medal face: the sport's emblem where one is drawn,
+ * otherwise the masthead motif, which holds up fine for the open shapes — a
+ * carrom board, a court, a track.
+ */
+export function SportEmblemShapes({ slug }: { slug: string }) {
+  const Emblem = EMBLEMS[slug];
+  return Emblem ? <Emblem /> : <SportMotifShapes slug={slug} />;
+}
+
+/**
+ * The bare line-work, without an `<svg>` around it, so a caller that is already
+ * drawing in SVG can place it inside their own coordinate system — the medal
+ * disc strikes it into the face at a fraction of its natural size.
+ */
+export function SportMotifShapes({ slug }: { slug: string }) {
+  const Motif = MOTIFS[slug] ?? BoardMotif;
+  return <Motif />;
+}
+
 export function SportMotif({ slug, className }: MotifProps) {
   const Motif = MOTIFS[slug] ?? BoardMotif;
   return (

@@ -49,12 +49,12 @@ export const POINTS_TAB_NAMES = [...RESULTS_TAB_NAMES, ...LEADERBOARD_TAB_NAMES]
 const EXPECTED_SPORT_POOL = 50;
 const EXPECTED_TOTAL_POOL = 450;
 
-const norm = (value: string) => (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+export const norm = (value: string) => (value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** Cells that mean "nothing here yet" rather than a real value. */
 const BLANK_CELLS = ["", "-", "tbd", "tba", "na", "none", "pending", "notplayed", "yettoplay"];
 
-const isBlank = (value: string) => BLANK_CELLS.includes(norm(value));
+export const isBlank = (value: string) => BLANK_CELLS.includes(norm(value));
 
 /** Rows the team keeps for their own arithmetic — we sum the events ourselves. */
 const TOTAL_LABELS = [
@@ -68,7 +68,7 @@ const TOTAL_LABELS = [
   "medalcounttiebreaker",
 ];
 
-const cell = (row: string[] | undefined, index: number | undefined) =>
+export const cell = (row: string[] | undefined, index: number | undefined) =>
   index === undefined || index < 0 ? "" : (row?.[index] ?? "").trim();
 
 /** A points cell to a number. Blank and junk both come back as 0. */
@@ -106,7 +106,7 @@ export function buildHouseLookup(groups: Group[]) {
  * Finds the header row rather than assuming row 1 — both tabs open with a
  * title banner, and the team may well add more rows above the table later.
  */
-function findHeaderRow(grid: SheetGrid, matches: (row: string[]) => boolean): number {
+export function findHeaderRow(grid: SheetGrid, matches: (row: string[]) => boolean): number {
   for (let i = 0; i < Math.min(grid.length, 25); i++) {
     const row = grid[i];
     if (row && matches(row)) return i;
@@ -115,15 +115,21 @@ function findHeaderRow(grid: SheetGrid, matches: (row: string[]) => boolean): nu
 }
 
 /** True once a row is entirely empty — where a block of the sheet stops. */
-const isEmptyRow = (row: string[] | undefined) =>
+export const isEmptyRow = (row: string[] | undefined) =>
   !row || row.every((value) => (value ?? "").trim() === "");
 
 /* ------------------------------------------------------------------ *
  * Results tab — the source of truth
  * ------------------------------------------------------------------ */
 
-const SPORT_HEADERS = ["sport", "sports", "game", "discipline"];
-const CATEGORY_HEADERS = ["eventcategory", "event", "category", "eventname", "categoryevent"];
+export const SPORT_HEADERS = ["sport", "sports", "game", "discipline"];
+export const CATEGORY_HEADERS = [
+  "eventcategory",
+  "event",
+  "category",
+  "eventname",
+  "categoryevent",
+];
 
 /**
  * Reads the Results tab into one record per event.

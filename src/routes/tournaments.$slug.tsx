@@ -11,10 +11,11 @@ import {
   Trophy,
 } from "lucide-react";
 
-import { getTournaments } from "@/lib/tournament-data";
+import { getPointsTable, getTournaments } from "@/lib/tournament-data";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
-import type { Tournament } from "@/data/tournaments";
+import type { Group, SportPoints, Tournament } from "@/data/tournaments";
 import { Bracket } from "@/components/bracket";
+import { EventWinners, NothingDecided } from "@/components/event-winners";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { SportMotif } from "@/components/sport-motif";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -22,10 +23,30 @@ import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/tournaments/$slug")({
   loader: async ({ params }) => {
-    const { tournaments, source, fetchedAt } = await getTournaments();
+    // Both server functions read the same cached copy of the sheet, so asking
+    // for the standings alongside the draw costs no extra fetch.
+    const [{ tournaments, source, fetchedAt }, { points }] = await Promise.all([
+      getTournaments(),
+      getPointsTable(),
+    ]);
     const tournament = tournaments.find((t) => t.slug === params.slug);
     if (!tournament) throw notFound();
-    return { tournament, others: tournaments, source, fetchedAt };
+
+    // The Results tab writes sport names, not slugs, so a sport only carries a
+    // slug once it also has a row on the Tournaments tab. Fall back to matching
+    // the name, which keeps the podium showing if the two tabs ever drift —
+    // "Dart" against "Darts", say.
+    const key = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const sportKey = key(tournament.sport);
+    const winners =
+      points.sports.find((sport) => sport.slug === params.slug) ??
+      points.sports.find((sport) => {
+        const name = key(sport.sport);
+        return name === sportKey || `${name}s` === sportKey || name === `${sportKey}s`;
+      }) ??
+      null;
+
+    return { tournament, others: tournaments, source, fetchedAt, winners, teams: points.teams };
   },
   head: ({ loaderData }) => {
     if (!loaderData) {
@@ -51,11 +72,11 @@ export const Route = createFileRoute("/tournaments/$slug")({
   component: TournamentPage,
 });
 
-const TABS = ["Details", "Matches", "Gallery", "Videos"] as const;
+const TABS = ["Details", "Matches", "Gallery", "Videos", "Winners"] as const;
 type Tab = (typeof TABS)[number];
 
 function TournamentPage() {
-  const { tournament: t, others, fetchedAt } = Route.useLoaderData();
+  const { tournament: t, others, fetchedAt, winners, teams } = Route.useLoaderData();
   const [tab, setTab] = useState<Tab>("Details");
   useAutoRefresh(60_000);
 
@@ -220,11 +241,51 @@ function TournamentPage() {
             )}
           </section>
         )}
+        {tab === "Winners" && <Winners sport={winners} teams={teams} name={t.sport} />}
       </main>
 
       <OtherTournaments slug={t.slug} all={others} />
       <SiteFooter />
     </div>
+  );
+}
+
+/**
+ * Who took the medals in this sport.
+ *
+ * `winners` is null when the Results tab has no rows for this slug at all —
+ * a sport the sheet hasn't started tracking, which reads the same to a visitor
+ * as one that hasn't been played.
+ */
+function Winners({
+  sport,
+  teams,
+  name,
+}: {
+  sport: SportPoints | null;
+  teams: Group[];
+  name: string;
+}) {
+  return (
+    <section>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="rule-ember font-display text-2xl font-extrabold sm:text-3xl">Winners</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The points go to the house; the medal goes to whoever won it.
+          </p>
+        </div>
+        <Link
+          to="/points-table"
+          className="text-xs text-muted-foreground transition-colors hover:text-accent"
+        >
+          See the full standings
+        </Link>
+      </div>
+      <div className="mt-10">
+        {sport ? <EventWinners sport={sport} teams={teams} /> : <NothingDecided sport={name} />}
+      </div>
+    </section>
   );
 }
 
