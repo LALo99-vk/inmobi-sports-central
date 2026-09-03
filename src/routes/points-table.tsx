@@ -22,7 +22,7 @@ export const Route = createFileRoute("/points-table")({
       {
         name: "description",
         content:
-          "The overall standings for InMobi Sports Day 2026: every point scored by all four houses, across all nine sports.",
+          "The overall standings for InMobi Sports Day 2026: every point scored by all four houses, across all ten sports.",
       },
       { property: "og:title", content: "Points Table — InMobi Sports Day 2026" },
       {
@@ -112,7 +112,7 @@ function PointsTablePage() {
             <div className="mt-10 border-t border-border py-20 text-center">
               <p className="font-display text-xl font-extrabold">Nothing scored yet</p>
               <p className="mx-auto mt-3 max-w-md text-muted-foreground">
-                Each of the nine sports appears here once the results start coming in.
+                Each of the ten sports appears here once the results start coming in.
               </p>
             </div>
           ) : (
@@ -499,7 +499,7 @@ function AwardedCell({ sport }: { sport: SportPoints }) {
   );
 }
 
-/** One of the 18 events, shown under its sport: who took each medal. */
+/** One of the 19 events, shown under its sport: who took each medal. */
 function EventRow({
   event,
   teams,
@@ -577,13 +577,15 @@ function HowPointsWork() {
       <h2 className="font-display text-lg font-extrabold">How points work</h2>
       <div className="mt-5 grid gap-x-10 gap-y-4 text-sm text-muted-foreground sm:grid-cols-3">
         <p>
-          <span className="font-semibold text-foreground">Every sport is worth 50 points</span>, so
-          all nine carry equal weight no matter how many people play them. 450 points in total.
+          <span className="font-semibold text-foreground">Sports are worth 40 or 50 points</span>,
+          450 in total. Cricket, football, badminton, table tennis and the races carry 50; chess,
+          carrom, dart, foosball and the relay carry 40.
         </p>
         <p>
-          <span className="font-semibold text-foreground">Gold 25, silver 15, bronze 10</span> where
-          a sport is one event. Badminton and table tennis split their 50 across five categories
-          (5/3/2 each); the two races are worth 25 each (12/8/5).
+          <span className="font-semibold text-foreground">Gold 25, silver 15, bronze 10</span> for
+          cricket and football; 18/13/9 for chess, carrom, dart, foosball and the relay. Badminton
+          and table tennis split their 50 across five categories (5/3/2 each); the two 100 m races
+          are worth 25 each (12/8/5).
         </p>
         <p>
           <span className="font-semibold text-foreground">Points go to the house</span>, never the
