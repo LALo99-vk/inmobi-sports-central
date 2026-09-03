@@ -89,6 +89,10 @@
 
   html {
     scroll-behavior: smooth;
+    /* Sideways scrolling belongs to the things that need it — the bracket, the
+       points tables — never to the page. `clip` rather than `hidden` so the
+       root stays out of the scroll-container business and sticky still works. */
+    overflow-x: clip;
   }
 
   @media (prefers-reduced-motion: reduce) {

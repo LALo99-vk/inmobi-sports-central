@@ -178,7 +178,7 @@ function MedalLine({ entry, className }: { entry: Standing; className?: string }
   return (
     <span className={cn("flex items-center gap-3 tabular-nums", className)}>
       {MEDALS.map((medal) => (
-        <span key={medal} className="flex items-center gap-1">
+        <span key={medal} className="relative flex items-center gap-1">
           <span aria-hidden>{MEDAL_ICON[medal]}</span>
           <span className="sr-only">{MEDAL_LABEL[medal]}</span>
           {entry[medal]}
@@ -285,7 +285,10 @@ function StandingsTable({
             <th className="w-12 py-3 pr-3 font-medium text-muted-foreground">#</th>
             <th className="py-3 pr-4 font-medium text-muted-foreground">House</th>
             {MEDALS.map((medal) => (
-              <th key={medal} className="w-14 py-3 text-right font-medium text-muted-foreground">
+              <th
+                key={medal}
+                className="relative w-14 py-3 text-right font-medium text-muted-foreground"
+              >
                 <span aria-hidden>{MEDAL_ICON[medal]}</span>
                 <span className="sr-only">{MEDAL_LABEL[medal]}</span>
               </th>
@@ -537,7 +540,7 @@ function EventRow({
             {event.medals.map((medal) => {
               const team = medal.team ? byCode.get(medal.team) : undefined;
               return (
-                <span key={medal.medal} className="flex items-center gap-2 text-sm">
+                <span key={medal.medal} className="relative flex items-center gap-2 text-sm">
                   <span aria-hidden>{MEDAL_ICON[medal.medal]}</span>
                   <span className="sr-only">{MEDAL_LABEL[medal.medal]}</span>
                   {team ? (
