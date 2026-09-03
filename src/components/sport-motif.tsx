@@ -139,16 +139,78 @@ function DartsMotif() {
   );
 }
 
-const MOTIFS: Record<string, () => React.ReactElement> = {
-  carrom: BoardMotif,
-  chess: ChessMotif,
-  badminton: CourtMotif,
-  "table-tennis": CourtMotif,
-  cricket: FieldMotif,
-  football: FieldMotif,
-  "races-relay": TrackMotif,
-  darts: DartsMotif,
-};
+/** Foosball — the table from above: rods across it, men on them, a goal each end. */
+function FoosballMotif() {
+  // Each rod and the men bolted to it — 1-2-3-3-2-1 out from the goals, the way
+  // a table is actually strung. The two inner rods stand clear of the centre
+  // circle so the men beside it read as men rather than smudging into the line.
+  const rods: [x: number, men: number[]][] = [
+    [34, [100]],
+    [56, [70, 130]],
+    [78, [58, 100, 142]],
+    [122, [58, 100, 142]],
+    [144, [70, 130]],
+    [166, [100]],
+  ];
+  return (
+    <>
+      <rect x="12" y="26" width="176" height="148" rx="3" {...stroke} />
+      <path d="M100 26 V174" {...stroke} />
+      <circle cx="100" cy="100" r="16" {...stroke} />
+      <circle cx="100" cy="100" r="3" fill="currentColor" stroke="none" />
+      {/* Goal mouths, cut into each end. */}
+      <path d="M12 76 H26 V124 H12" {...stroke} />
+      <path d="M188 76 H174 V124 H188" {...stroke} />
+      {rods.map(([x, men]) => (
+        <g key={x}>
+          {/* The rod overhangs the table, as it does in the room. */}
+          <path d={`M${x} 16 V184`} {...stroke} opacity="0.6" />
+          {men.map((y) => (
+            <rect
+              key={y}
+              x={x - 5}
+              y={y - 9}
+              width="10"
+              height="18"
+              rx="3"
+              fill="currentColor"
+              stroke="none"
+              opacity="0.85"
+            />
+          ))}
+        </g>
+      ))}
+    </>
+  );
+}
+
+/** "TT Men's Singles" and "tt-mens-singles" both reduce to "ttmenssingles". */
+const norm = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/**
+ * Callers hold a *tournament* slug — "tt-mens-singles", "fooseball", "Chess" —
+ * while a motif belongs to a *sport*. Match on a normalised prefix so a slug
+ * that names its sport and then its category still lands on the right mark, and
+ * so a capital letter or a misspelling in the sheet doesn't silently fall
+ * through to the carrom board.
+ */
+const MOTIFS: { keys: string[]; motif: () => React.ReactElement }[] = [
+  { keys: ["carrom"], motif: BoardMotif },
+  { keys: ["chess"], motif: ChessMotif },
+  { keys: ["badminton"], motif: CourtMotif },
+  { keys: ["tabletennis", "tt"], motif: CourtMotif },
+  { keys: ["cricket"], motif: FieldMotif },
+  { keys: ["football"], motif: FieldMotif },
+  { keys: ["race", "relay"], motif: TrackMotif },
+  { keys: ["dart"], motif: DartsMotif },
+  // The sheet spells it "fooseball"; both spellings resolve.
+  { keys: ["foosball", "fooseball"], motif: FoosballMotif },
+];
+
+function motifFor(slug: string) {
+  const key = norm(slug);
+  return MOTIFS.find((entry) => entry.keys.some((k) => key.startsWith(k)))?.motif ?? BoardMotif;
+}
 
 /**
  * Chess, as the pieces rather than the board.
@@ -192,10 +254,37 @@ function ChessEmblem() {
   );
 }
 
+/**
+ * Foosball, as the man on the rod rather than the table.
+ *
+ * Same reasoning as the chess pieces: struck into a 64px face, the table's six
+ * rods and their thirteen men collapse into a grey band. One figure with the
+ * rod through its shoulders is the shape everybody recognises, and it survives
+ * being shrunk.
+ */
+function FoosballEmblem() {
+  return (
+    <g fill="currentColor" stroke="none">
+      {/* The rod, running the full width through the shoulders. */}
+      <rect x="18" y="70" width="164" height="13" rx="6.5" />
+      <circle cx="100" cy="46" r="17" />
+      <rect x="93" y="58" width="14" height="14" />
+      {/* Torso — square shoulders tapering to the waist. */}
+      <path d="M76 68h48l-5 46H81Z" />
+      {/* Legs, planted apart. */}
+      <path d="M81 118h16l-3 52H72Z" />
+      <path d="M103 118h16l9 52h-22Z" />
+      <rect x="64" y="168" width="34" height="11" rx="4" />
+      <rect x="102" y="168" width="34" height="11" rx="4" />
+    </g>
+  );
+}
+
 /** Sports whose medal face wants its own mark rather than the masthead motif. */
-const EMBLEMS: Record<string, () => React.ReactElement> = {
-  chess: ChessEmblem,
-};
+const EMBLEMS: { keys: string[]; emblem: () => React.ReactElement }[] = [
+  { keys: ["chess"], emblem: ChessEmblem },
+  { keys: ["foosball", "fooseball"], emblem: FoosballEmblem },
+];
 
 /**
  * What gets struck into a medal face: the sport's emblem where one is drawn,
@@ -203,7 +292,8 @@ const EMBLEMS: Record<string, () => React.ReactElement> = {
  * carrom board, a court, a track.
  */
 export function SportEmblemShapes({ slug }: { slug: string }) {
-  const Emblem = EMBLEMS[slug];
+  const key = norm(slug);
+  const Emblem = EMBLEMS.find((entry) => entry.keys.some((k) => key.startsWith(k)))?.emblem;
   return Emblem ? <Emblem /> : <SportMotifShapes slug={slug} />;
 }
 
@@ -213,12 +303,12 @@ export function SportEmblemShapes({ slug }: { slug: string }) {
  * disc strikes it into the face at a fraction of its natural size.
  */
 export function SportMotifShapes({ slug }: { slug: string }) {
-  const Motif = MOTIFS[slug] ?? BoardMotif;
+  const Motif = motifFor(slug);
   return <Motif />;
 }
 
 export function SportMotif({ slug, className }: MotifProps) {
-  const Motif = MOTIFS[slug] ?? BoardMotif;
+  const Motif = motifFor(slug);
   return (
     <svg
       viewBox="0 0 200 200"
