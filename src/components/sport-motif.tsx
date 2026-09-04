@@ -80,7 +80,23 @@ function CourtMotif() {
   );
 }
 
-/** Cricket / football — centre circle, halfway line, penalty arcs. */
+/** Cricket — an oval boundary, the ring, and the strip down the middle. */
+function GroundMotif() {
+  return (
+    <>
+      <ellipse cx="100" cy="100" rx="88" ry="76" {...stroke} />
+      {/* The fielding ring, set back the way the thirty-yard circle sits. */}
+      <ellipse cx="100" cy="100" rx="47" ry="41" {...stroke} opacity="0.55" />
+      {/* The strip, with a crease and a set of stumps at each end. */}
+      <rect x="90" y="68" width="20" height="64" {...stroke} />
+      <path d="M84 82 H116 M84 118 H116" {...stroke} />
+      <path d="M94 68 V76 M100 68 V76 M106 68 V76" {...stroke} />
+      <path d="M94 124 V132 M100 124 V132 M106 124 V132" {...stroke} />
+    </>
+  );
+}
+
+/** Football — centre circle, halfway line, penalty arcs. */
 function FieldMotif() {
   return (
     <>
@@ -199,7 +215,7 @@ const MOTIFS: { keys: string[]; motif: () => React.ReactElement }[] = [
   { keys: ["chess"], motif: ChessMotif },
   { keys: ["badminton"], motif: CourtMotif },
   { keys: ["tabletennis", "tt"], motif: CourtMotif },
-  { keys: ["cricket"], motif: FieldMotif },
+  { keys: ["cricket"], motif: GroundMotif },
   { keys: ["football"], motif: FieldMotif },
   { keys: ["race", "relay"], motif: TrackMotif },
   { keys: ["dart"], motif: DartsMotif },
@@ -280,16 +296,231 @@ function FoosballEmblem() {
   );
 }
 
+/**
+ * Cricket, as the kit rather than the ground.
+ *
+ * The masthead falls back on a field, which for cricket draws a football pitch
+ * — halfway line, penalty boxes and all. Medals put the kit on the face
+ * instead. The three pieces stand side by side rather than crossing: struck in
+ * one colour, a bat laid over the stumps merges into a single blob.
+ */
+function CricketEmblem() {
+  return (
+    <g fill="currentColor" stroke="none">
+      {/* The bat, leaning in from the left. */}
+      <g transform="rotate(-10 42 170)">
+        <rect x="36" y="40" width="12" height="46" rx="6" />
+        <rect x="26" y="80" width="32" height="90" rx="11" />
+      </g>
+      <circle cx="90" cy="154" r="16" />
+      {/* Two bails over three stumps. */}
+      <rect x="121" y="42" width="33" height="8" rx="4" />
+      <rect x="145" y="42" width="33" height="8" rx="4" />
+      <rect x="120" y="52" width="11" height="118" rx="5.5" />
+      <rect x="144" y="52" width="11" height="118" rx="5.5" />
+      <rect x="168" y="52" width="11" height="118" rx="5.5" />
+      {/* The crease they all stand on. */}
+      <rect x="16" y="170" width="170" height="8" rx="4" />
+    </g>
+  );
+}
+
+/**
+ * Football, as the boot and the ball.
+ *
+ * The ball's centre panel is punched out with `evenodd` rather than drawn on
+ * top of it: the emblem only ever has one colour to work with, so the only way
+ * to put a mark inside a solid shape is to take metal away. One pentagon is
+ * enough — the surrounding hexagons would be a unit across at this size and
+ * would close up under the strike.
+ */
+/**
+ * Football, as the boot and the ball.
+ *
+ * The ball is drawn the way a ball is drawn — a ring, the centre panel, and the
+ * seams running off its corners. Solid, with the panel punched out of it, it
+ * read as a full stop. The seams stop at the ring rather than crossing it, so
+ * the outline stays unbroken when the die closes them up.
+ */
+function FootballEmblem() {
+  return (
+    <g fill="currentColor" stroke="none">
+      <circle cx="136" cy="84" r="41" fill="none" stroke="currentColor" strokeWidth="9" />
+      <path d="M136 68 151.2 79.1 145.4 96.9 126.6 96.9 120.8 79.1Z" />
+      <path
+        d="M136 68 136 47.5M151.2 79.1 170.7 72.7M145.4 96.9 157.5 113.5M126.6 96.9 114.5 113.5M120.8 79.1 101.3 72.7"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="7.5"
+        strokeLinecap="round"
+      />
+      {/* The boot, sat close under it: collar, instep, sole out to the toe. */}
+      <path d="M32 100 62 100 74 128C100 145 128 151 156 153L158 165 32 165C24 165 22 157 22 148L22 112C22 105 26 100 32 100Z" />
+      <rect x="34" y="165" width="16" height="10" rx="3" />
+      <rect x="78" y="165" width="16" height="10" rx="3" />
+      <rect x="128" y="165" width="16" height="10" rx="3" />
+    </g>
+  );
+}
+/**
+ * One laurel sprig, curving up the left of a mark. The right is this mirrored,
+ * so the pair can never drift apart.
+ *
+ * Four leaves, not the dozen a real wreath carries: at the strike a leaf is
+ * about five pixels long, and a dozen of them close into a solid crescent.
+ */
+function LaurelBranch() {
+  return (
+    <>
+      <path
+        d="M70 184C48 172 32 150 25 98"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="6"
+        strokeLinecap="round"
+      />
+      {[
+        [54, 168, 36],
+        [41, 150, 55],
+        [31, 126, 72],
+        [25, 100, 83],
+      ].map(([x, y, angle]) => (
+        <ellipse
+          key={angle}
+          cx={x}
+          cy={y}
+          rx="13"
+          ry="6.5"
+          transform={`rotate(${angle} ${x} ${y})`}
+        />
+      ))}
+    </>
+  );
+}
+
+/**
+ * Badminton, as the shuttle in a wreath.
+ *
+ * Five feathers rather than the sixteen a real shuttle has: spaced at 16° they
+ * still hold a couple of units of daylight between them once struck, where a
+ * full skirt would close into a solid cone.
+ *
+ * The laurels sit where the shuttle is narrowest — up the sides of the cork,
+ * below the flare of the skirt — so the two never have to share space.
+ */
+function ShuttleEmblem() {
+  return (
+    <g fill="currentColor" stroke="none">
+      {[-32, -16, 0, 16, 32].map((angle) => (
+        <path
+          key={angle}
+          transform={`rotate(${angle} 100 158)`}
+          d="M94 146 106 146 111 40 89 40Z"
+        />
+      ))}
+      {/* The cork, rounded off the way it leaves the racket. */}
+      <path d="M76 140h48v12a24 24 0 0 1-48 0Z" />
+      <LaurelBranch />
+      <g transform="translate(200 0) scale(-1 1)">
+        <LaurelBranch />
+      </g>
+    </g>
+  );
+}
+
+/**
+ * One bat: the blade, its detailing, and the handle laid over the top of it.
+ *
+ * A plain disc strikes as a plain disc, so the blade carries the two lines a
+ * real bat shows — the straight edge of the rubber up by the handle, and the
+ * edge tape following the rim below. Both are cut out of the blade with
+ * `evenodd` rather than drawn over it: the emblem has one colour, so a line
+ * has to be metal taken away. Neither runs quite to the blade's edge, which
+ * would break the outline the eye reads the shape from.
+ *
+ * The handle goes on after the blade and crosses the straight groove, leaving
+ * it as two segments — which is what the eye expects, the rubber carrying on
+ * behind the handle.
+ *
+ * `x` is the blade's centre, and everything is drawn around it, so the pair
+ * are two placements of one shape rather than two shapes kept in step by hand.
+ */
+function TableTennisBat({ x, lean }: { x: number; lean: number }) {
+  const at = (n: number) => n + x - 56;
+  return (
+    <g transform={`rotate(${lean} ${x} 126)`}>
+      <path
+        fillRule="evenodd"
+        d={
+          `M${at(19)} 126a37 37 0 1 0 74 0 37 37 0 1 0-74 0Z` +
+          `M${at(26)} 108h60v8h-60Z` +
+          `M${at(86.9)} 134.28A32 32 0 0 1 ${at(25.1)} 134.28` +
+          `L${at(31.85)} 132.47A25 25 0 0 0 ${at(80.15)} 132.47Z`
+        }
+      />
+      <rect x={at(48)} y="34" width="16" height="100" rx="8" />
+    </g>
+  );
+}
+
+/**
+ * Table tennis, as two bats and the ball.
+ *
+ * The two bats stand apart and stay apart: they lean towards each other, but
+ * the handles stop a good thirty units short of meeting, and the blades keep
+ * daylight down the middle. Crossed into an X the pair struck as one shape.
+ * The ball sits below and between them, clear of both blades.
+ */
+function TableTennisEmblem() {
+  return (
+    <g fill="currentColor" stroke="none">
+      <TableTennisBat x={56} lean={12} />
+      <TableTennisBat x={144} lean={-12} />
+      <circle cx="100" cy="170" r="13" />
+    </g>
+  );
+}
+
+/** Limbs are drawn as round-capped strokes: at this size a joint reads better
+ *  as one thick line than as an outline that has to stay open. */
+const limb: React.SVGProps<SVGPathElement> = {
+  fill: "none",
+  stroke: "currentColor",
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+};
+
+/** Races — the sprinter, mid-stride. */
+function RunnerEmblem() {
+  return (
+    <g>
+      <circle cx="140" cy="46" r="16" fill="currentColor" />
+      <path d="M126 68 100 118" {...limb} strokeWidth="24" />
+      <path d="M126 72 98 86 70 72" {...limb} strokeWidth="14" />
+      <path d="M126 72 156 88 170 64" {...limb} strokeWidth="14" />
+      <path d="M100 118 70 138 42 152" {...limb} strokeWidth="18" />
+      <path d="M100 118 138 126 146 164" {...limb} strokeWidth="18" />
+      <path d="M42 152 24 168" {...limb} strokeWidth="12" />
+      <path d="M146 164 170 170" {...limb} strokeWidth="12" />
+    </g>
+  );
+}
+
 /** Sports whose medal face wants its own mark rather than the masthead motif. */
 const EMBLEMS: { keys: string[]; emblem: () => React.ReactElement }[] = [
   { keys: ["chess"], emblem: ChessEmblem },
   { keys: ["foosball", "fooseball"], emblem: FoosballEmblem },
+  { keys: ["cricket"], emblem: CricketEmblem },
+  { keys: ["football"], emblem: FootballEmblem },
+  { keys: ["badminton"], emblem: ShuttleEmblem },
+  { keys: ["tabletennis", "tt"], emblem: TableTennisEmblem },
+  { keys: ["race", "relay"], emblem: RunnerEmblem },
 ];
 
 /**
  * What gets struck into a medal face: the sport's emblem where one is drawn,
- * otherwise the masthead motif, which holds up fine for the open shapes — a
- * carrom board, a court, a track.
+ * otherwise the masthead motif, which holds up fine for the open shapes that
+ * are left — the carrom board, the darts board.
  */
 export function SportEmblemShapes({ slug }: { slug: string }) {
   const key = norm(slug);
