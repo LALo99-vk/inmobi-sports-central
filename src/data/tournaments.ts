@@ -488,6 +488,7 @@ export const tournaments: Tournament[] = [
       // rules, where the stage-by-stage numbers can be spelled out.
       { label: "Overs", value: "10 per innings" },
       { label: "Squad size", value: "15 named, 11 playing" },
+      { label: "Tie-breaker", value: "Super Over" },
     ],
     rules: [
       {
