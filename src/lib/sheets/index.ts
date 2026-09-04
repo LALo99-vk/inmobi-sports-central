@@ -442,7 +442,7 @@ const emptyData = (error?: string): SheetData => ({
   ...(error ? { error } : {}),
 });
 
-async function readSheet(): Promise<SheetData> {
+async function readSheet(force = false): Promise<SheetData> {
   const config = readSheetsConfig();
   if (!config) {
     return emptyData(
@@ -451,8 +451,23 @@ async function readSheet(): Promise<SheetData> {
   }
 
   try {
-    const tabs = await fetchAllTabs(config);
-    const { tournaments, groups, points, warnings, fromSheet, configs } = buildFromTabs(tabs);
+    let tabs = await fetchAllTabs(config, { refreshTitles: force });
+    let built = buildFromTabs(tabs);
+
+    // The client remembers tab names for a few minutes rather than paying for
+    // the metadata call on every read. A published tournament pointing at a tab
+    // we never fetched means that list is simply behind — the desk has just
+    // added the tab — so look the names up again rather than dropping the
+    // tournament off the site until the cache turns over.
+    const missing = built.configs.some(
+      (entry) => entry.visible && !findTab(tabs, entry.sheetTab.trim().toLowerCase())?.length,
+    );
+    if (missing && !force) {
+      tabs = await fetchAllTabs(config, { refreshTitles: true });
+      built = buildFromTabs(tabs);
+    }
+
+    const { tournaments, groups, points, warnings, fromSheet, configs } = built;
     const withGalleries = await attachGalleries(tournaments, configs);
 
     // An empty result is a valid state (nothing published yet), not an error.
@@ -484,7 +499,7 @@ export async function loadSheetData(options?: { force?: boolean }): Promise<Shee
   }
   if (inFlight) return inFlight;
 
-  inFlight = readSheet().finally(() => {
+  inFlight = readSheet(options?.force === true).finally(() => {
     inFlight = null;
   });
   return inFlight;

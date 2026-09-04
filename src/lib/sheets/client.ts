@@ -161,9 +161,31 @@ async function api<T>(url: string, token: string, config: SheetsConfig): Promise
   return (await response.json()) as T;
 }
 
-/** Every tab in the spreadsheet, keyed by tab name. */
-export async function fetchAllTabs(config: SheetsConfig): Promise<Record<string, SheetGrid>> {
-  const token = await getAccessToken(config);
+/**
+ * Tab titles, remembered between reads.
+ *
+ * `values:batchGet` needs to be told which ranges to read, so every read used
+ * to ask for the spreadsheet's metadata first purely to learn the tab names --
+ * a round trip that measured slower than reading all thirteen tabs. Names only
+ * change when somebody adds or renames a tab, so cache them; a forced refresh
+ * (the Refresh button, /api/sheet-status?refresh=1) always looks again, and a
+ * new tab otherwise shows up within the TTL below.
+ */
+const TITLES_TTL_MS = 5 * 60_000;
+
+let titleCache: { spreadsheetId: string; titles: string[]; fetchedAt: number } | null = null;
+
+async function fetchTabTitles(
+  config: SheetsConfig,
+  token: string,
+  refresh: boolean,
+): Promise<string[]> {
+  const cached =
+    titleCache?.spreadsheetId === config.spreadsheetId &&
+    Date.now() - titleCache.fetchedAt < TITLES_TTL_MS
+      ? titleCache.titles
+      : null;
+  if (!refresh && cached) return cached;
 
   const meta = await api<{ sheets?: { properties?: { title?: string } }[] }>(
     `${SHEETS_API}/${config.spreadsheetId}?fields=sheets.properties.title`,
@@ -174,6 +196,19 @@ export async function fetchAllTabs(config: SheetsConfig): Promise<Record<string,
   const titles = (meta.sheets ?? [])
     .map((sheet) => sheet.properties?.title)
     .filter((title): title is string => Boolean(title));
+
+  titleCache = { spreadsheetId: config.spreadsheetId, titles, fetchedAt: Date.now() };
+  return titles;
+}
+
+/** Every tab in the spreadsheet, keyed by tab name. */
+export async function fetchAllTabs(
+  config: SheetsConfig,
+  options?: { refreshTitles?: boolean },
+): Promise<Record<string, SheetGrid>> {
+  const token = await getAccessToken(config);
+
+  const titles = await fetchTabTitles(config, token, options?.refreshTitles === true);
 
   if (titles.length === 0) return {};
 
