@@ -9,6 +9,7 @@ import {
   Play,
   RefreshCw,
   Trophy,
+  X,
 } from "lucide-react";
 
 import { getPointsTable, getTournaments } from "@/lib/tournament-data";
@@ -18,7 +19,7 @@ import { Bracket } from "@/components/bracket";
 import { EventWinners, NothingDecided } from "@/components/event-winners";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { SportMotif } from "@/components/sport-motif";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/tournaments/$slug")({
@@ -417,23 +418,50 @@ function VideoCard({ video }: { video: Tournament["videos"][number] }) {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="w-auto max-w-none border-0 bg-transparent p-0 text-white shadow-none">
-          <DialogTitle className="sr-only">{video.title}</DialogTitle>
+        <DialogContent
+          closeButton={false}
+          className="w-auto max-w-none border-0 bg-transparent p-0 text-white shadow-none"
+        >
           {/* Width is capped by the viewport on both axes at once, so the clip
-              fills the frame exactly and never letterboxes inside it. */}
+              fills the frame exactly and never letterboxes inside it. The bar
+              costs the height it takes, so the clip is measured against a
+              slightly shorter viewport than the frame alone would need. */}
           <div
-            className="overflow-hidden rounded-xl bg-black"
-            style={{ width: `min(92vw, ${(aspect * 82).toFixed(2)}vh)`, aspectRatio: aspect }}
+            className="flex flex-col gap-2"
+            style={{ width: `min(92vw, ${(aspect * 78).toFixed(2)}vh)` }}
           >
-            {open && (
-              <iframe
-                src={`https://drive.google.com/file/d/${video.id}/preview`}
-                title={video.title}
-                allow="autoplay; fullscreen"
-                allowFullScreen
-                className="size-full"
-              />
-            )}
+            {/* Our chrome stays outside the frame. Drive's player draws its
+                own pop-out button in the iframe's top-right corner, and a
+                close button in that corner landed on top of it — on the phone
+                the two were a single unreadable smudge. Above the frame it
+                cannot collide with anything Drive decides to draw. */}
+            <div className="flex items-center gap-3">
+              <DialogTitle className="min-w-0 flex-1 truncate text-sm font-medium text-white/75">
+                {video.title}
+              </DialogTitle>
+              <DialogClose
+                className={cn(
+                  "flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full",
+                  "bg-white/10 text-white/80 ring-1 ring-white/20 transition",
+                  "hover:bg-white/20 hover:text-white",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white",
+                )}
+              >
+                <X className="size-4" />
+                <span className="sr-only">Close</span>
+              </DialogClose>
+            </div>
+            <div className="overflow-hidden rounded-xl bg-black" style={{ aspectRatio: aspect }}>
+              {open && (
+                <iframe
+                  src={`https://drive.google.com/file/d/${video.id}/preview`}
+                  title={video.title}
+                  allow="autoplay; fullscreen"
+                  allowFullScreen
+                  className="size-full"
+                />
+              )}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
