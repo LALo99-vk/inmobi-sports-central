@@ -484,8 +484,44 @@ export const tournaments: Tournament[] = [
     about:
       "The marquee event of Sports Day 2026. Eight house teams in two groups of four, ten-over innings, and a knockout stage that runs a fortnight after the group weekend.",
     info: [
+      // League overs. The knockout plays longer innings — that belongs in the
+      // rules, where the stage-by-stage numbers can be spelled out.
       { label: "Overs", value: "10 per innings" },
-      { label: "Squad size", value: "11 + 2 substitutes" },
+      { label: "Squad size", value: "15 named, 11 playing" },
+    ],
+    rules: [
+      {
+        section: "Format",
+        text: "Ten overs a side in the group stage, fifteen in the semi-finals and final, and twelve in the third-place match. The knockout overs may change on the day if conditions or time demand it.",
+      },
+      {
+        section: "Squad",
+        text: "Up to fifteen players a team. The captain picks the playing eleven on CricHeroes and confirms it with the match official before the game begins.",
+      },
+      {
+        section: "One team only",
+        text: "Within a group a player turns out for a single team. Fielding the same player for two teams in one group disqualifies the team that played them.",
+      },
+      {
+        section: "Bowling",
+        text: "No bowler sends down more than two overs in a league match, or three in the knockout. Two bouncers are allowed an over.",
+      },
+      {
+        section: "Powerplay",
+        text: "The first three overs of a league innings, five in the semi-finals and final, four in the third-place match \u2014 no more than two fielders outside the thirty-yard circle.",
+      },
+      {
+        section: "Batting",
+        text: "No LBW. Runs are awarded for byes, overthrows, wides and no-balls, and a no-ball brings a free hit on which the batter can only go run out, hitting the ball twice or obstructing the field.",
+      },
+      {
+        section: "Injuries",
+        text: "No runners: an injured batter is retired not out and may return if they recover. The fielding side may use two substitute fielders a game, and a short-handed team may borrow its A- or B-team players to field only.",
+      },
+      {
+        section: "On the day",
+        text: "Played with a red Vicky ball. Innings are capped at forty-five minutes in the league, seventy-five in the semi-finals and final, sixty in the third-place match, with a five-minute innings break. A tie goes to a Super Over, and the umpire\u2019s decision is final.",
+      },
     ],
     rounds: buildLadder(cricketSquads, {
       completed: 3,
