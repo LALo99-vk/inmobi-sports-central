@@ -1,16 +1,6 @@
 import { createFileRoute, Link, notFound, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
-import {
-  ArrowLeft,
-  CalendarDays,
-  Camera,
-  Clock,
-  MapPin,
-  Play,
-  RefreshCw,
-  Trophy,
-  X,
-} from "lucide-react";
+import { ArrowLeft, CalendarDays, Camera, Clock, MapPin, Play, RefreshCw, X } from "lucide-react";
 
 import { getPointsTable, getTournaments } from "@/lib/tournament-data";
 import { useAutoRefresh } from "@/hooks/use-auto-refresh";
@@ -530,9 +520,6 @@ function Details({ t }: { t: Tournament }) {
               </div>
             ))}
           </dl>
-          <p className="mt-7 flex items-center gap-2 text-sm text-muted-foreground">
-            <Trophy className="size-4 text-accent" /> Winner announced at the closing ceremony.
-          </p>
         </aside>
       </section>
       {t.rules?.length ? <Rules rules={t.rules} /> : null}
